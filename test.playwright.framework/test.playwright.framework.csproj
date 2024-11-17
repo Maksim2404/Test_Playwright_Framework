@@ -1,10 +1,38 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <OutputType>Exe</OutputType>
         <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <UserSecretsId>trak</UserSecretsId>
     </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Allure.Net.Commons" Version="2.12.1" />
+      <PackageReference Include="Allure.NUnit" Version="2.12.1" />
+      <PackageReference Include="BoDi" Version="1.5.0" />
+      <PackageReference Include="Bogus" Version="35.6.1" />
+      <PackageReference Include="ChartDirector.Net" Version="7.1.0" />
+      <PackageReference Include="CsvTextFieldParser" Version="1.2.2" />
+      <PackageReference Include="ExtentReports" Version="5.0.4" />
+      <PackageReference Include="FluentAssertions" Version="6.12.2" />
+      <PackageReference Include="FluentAssertions.Extensions" Version="1.0.18" />
+      <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />
+      <PackageReference Include="InputStateManager" Version="1.2.1.4" />
+      <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="9.0.0" />
+      <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+      <PackageReference Include="Microsoft.Playwright" Version="1.48.0" />
+      <PackageReference Include="Microsoft.Playwright.NUnit" Version="1.48.0" />
+      <PackageReference Include="Microsoft.Playwright.TestAdapter" Version="1.48.0" />
+      <PackageReference Include="RestAssured.Net" Version="4.4.0" />
+      <PackageReference Include="Serilog" Version="4.1.0" />
+      <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+      <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+      <PackageReference Include="SixLabors.ImageSharp" Version="3.1.5" />
+      <PackageReference Include="SpecFlow" Version="3.9.74" />
+      <PackageReference Include="SpecFlow.NUnit" Version="3.9.74" />
+      <PackageReference Include="SpecFlow.NUnit.Runners" Version="3.9.74" />
+      <PackageReference Include="SpecFlow.Tools.MsBuild.Generation" Version="3.9.74" />
+    </ItemGroup>
 
 </Project>

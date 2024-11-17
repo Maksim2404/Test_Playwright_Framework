@@ -10,10 +10,11 @@
 using System;
 using System.Reflection;
 
+[assembly: Microsoft.Extensions.Configuration.UserSecrets.UserSecretsIdAttribute("trak")]
 [assembly: System.Reflection.AssemblyCompanyAttribute("test.playwright.framework")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3ecfccd5f70696bb959028077f3a092d09ea614b")]
 [assembly: System.Reflection.AssemblyProductAttribute("test.playwright.framework")]
 [assembly: System.Reflection.AssemblyTitleAttribute("test.playwright.framework")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
