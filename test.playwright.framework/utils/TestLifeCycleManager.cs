@@ -8,7 +8,7 @@ namespace test.playwright.framework.utils;
 
 public class TestLifeCycleManager(BrowserManager browserManager)
 {
-    public IPage Page { get; private set; }
+    public IPage Page { get; private set; } = null!;
     private IBrowserContext _browserContext = null!;
     private AtfConfig _atfConfig;
 
@@ -17,7 +17,7 @@ public class TestLifeCycleManager(BrowserManager browserManager)
         return selector.StartsWith("xpath=") ? Page.Locator(selector[6..]) : Page.Locator(selector);
     }
 
-    public async Task WaitForNetworkIdle()
+    private async Task WaitForNetworkIdle()
     {
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 15000 });
         Log.Information("Page reached 'NetworkIdle' state");
@@ -110,6 +110,8 @@ public class TestLifeCycleManager(BrowserManager browserManager)
             Log.Information($"Test started at: {DateTime.Now}");
 
             _atfConfig = AtfConfig.ReadConfig();
+
+            await OpenBaseUrl();
         }
         catch (Exception ex)
         {

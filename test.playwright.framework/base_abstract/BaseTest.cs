@@ -77,7 +77,7 @@ public abstract class BaseTest
         _testStopwatch = Stopwatch.StartNew();
     }
 
-    protected void LogTestCompletion()
+    private void LogTestCompletion()
     {
         _testStopwatch?.Stop();
         Log.Information($"Test status: {TestContext.CurrentContext.Result.Outcome.Status}");
@@ -125,7 +125,7 @@ public abstract class BaseTest
         await TestLifeCycleManager.CloseTestAsync();
     }
 
-    protected static async Task CaptureAllureScreenshot(IPage page)
+    private static async Task CaptureAllureScreenshot(IPage page)
     {
         try
         {
