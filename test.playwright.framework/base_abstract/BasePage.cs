@@ -7,13 +7,35 @@ namespace test.playwright.framework.base_abstract;
 public abstract class BasePage(IPage page)
 {
     protected IPage Page { get; } = page ?? throw new ArgumentNullException(nameof(page), "Page cannot be null");
+    
+    protected async Task<IPage> OpenNewPageAsync(Func<Task> actionToOpenPage)
+    {
+        var newPageTask = Page.Context.WaitForPageAsync();
+
+        await actionToOpenPage();
+
+        var newPage = await newPageTask;
+        await newPage.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        return newPage;
+    }
+    
+    protected internal async Task<IPage> CloseCurrentPageAndSwitchBackAsync()
+    {
+        await Page.CloseAsync();
+
+        var allPages = Page.Context.Pages;
+        var previousPage = allPages[^1];
+        
+        await previousPage.BringToFrontAsync(); // Ensure the previous page is in the foreground
+        return previousPage;
+    }
 
     private ILocator GetLocator(string selector)
     {
         return Page.Locator(selector.StartsWith("xpath=") ? selector[6..] : selector);
     }
 
-    private async Task WaitForNetworkIdle()
+    protected async Task WaitForNetworkIdle()
     {
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 15000 });
     }
