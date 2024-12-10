@@ -1,0 +1,32 @@
+{
+  "TestCases": [
+    {
+      "Name": "Verify Implement User Authentication Task",
+      "NavigationPath": "Web Application",
+      "TaskTitle": "Implement user authentication",
+      "Column": "To Do",
+      "Tags": [
+        "Feature",
+        "High Priority"
+      ]
+    },
+    {
+      "Name": "Verify Fix Navigation Bug Task",
+      "NavigationPath": "Web Application",
+      "TaskTitle": "Fix navigation bug",
+      "Column": "To Do",
+      "Tags": [
+        "Bug"
+      ]
+    },
+    {
+      "Name": "Verify Design System Updates Task",
+      "NavigationPath": "Web Application",
+      "TaskTitle": "Design system updates",
+      "Column": "In Progress",
+      "Tags": [
+        "Design"
+      ]
+    }
+  ]
+}

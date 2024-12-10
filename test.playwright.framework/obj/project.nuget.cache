@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "9M5eTfnHgPQ=",
+  "dgSpecHash": "vX72nm+jpiE=",
   "success": true,
   "projectFilePath": "C:\\Users\\maksim.meleshkin\\RiderProjects\\personal\\test.playwright.framework\\test.playwright.framework.csproj",
   "expectedPackageFiles": [
@@ -64,7 +64,7 @@
     "C:\\Users\\maksim.meleshkin\\.nuget\\packages\\nunit.extension.nunitv2resultwriter\\3.6.0\\nunit.extension.nunitv2resultwriter.3.6.0.nupkg.sha512",
     "C:\\Users\\maksim.meleshkin\\.nuget\\packages\\nunit.extension.teamcityeventlistener\\1.0.7\\nunit.extension.teamcityeventlistener.1.0.7.nupkg.sha512",
     "C:\\Users\\maksim.meleshkin\\.nuget\\packages\\nunit.extension.vsprojectloader\\3.8.0\\nunit.extension.vsprojectloader.3.8.0.nupkg.sha512",
-    "C:\\Users\\maksim.meleshkin\\.nuget\\packages\\nunit3testadapter\\4.0.0\\nunit3testadapter.4.0.0.nupkg.sha512",
+    "C:\\Users\\maksim.meleshkin\\.nuget\\packages\\nunit3testadapter\\4.6.0\\nunit3testadapter.4.6.0.nupkg.sha512",
     "C:\\Users\\maksim.meleshkin\\.nuget\\packages\\razorengine.netcore.nixfix\\1.0.1\\razorengine.netcore.nixfix.1.0.1.nupkg.sha512",
     "C:\\Users\\maksim.meleshkin\\.nuget\\packages\\restassured.net\\4.4.0\\restassured.net.4.4.0.nupkg.sha512",
     "C:\\Users\\maksim.meleshkin\\.nuget\\packages\\runtime.debian.8-x64.runtime.native.system.security.cryptography.openssl\\4.3.2\\runtime.debian.8-x64.runtime.native.system.security.cryptography.openssl.4.3.2.nupkg.sha512",
