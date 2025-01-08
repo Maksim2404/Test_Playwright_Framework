@@ -24,7 +24,7 @@ public static class TestDataGenerators
         return Faker.System.FileName();
     }
 
-    public static string GenerateRandomYear()
+    public static string GenerateRandomFakerYear()
     {
         return Faker.Date.Future().Year.ToString();
     }
@@ -59,5 +59,24 @@ public static class TestDataGenerators
 
         var time = $"{hours:D2}:{minutes:D2}";
         return time;
+    }
+
+    public static string GenerateRandomYear()
+    {
+        var currentYear = DateTime.Now.Year;
+        var randomYear = Random.Next(2023, currentYear + 1);
+
+        return randomYear.ToString();
+    }
+
+    private static void Shuffle<T>(IList<T> list)
+    {
+        var n = list.Count;
+        while (n > 1)
+        {
+            n--;
+            var k = Random.Next(n + 1);
+            (list[k], list[n]) = (list[n], list[k]);
+        }
     }
 }

@@ -5,13 +5,12 @@ public class TestMetricsManager
     private int TotalTestsRan { get; set; }
     private int PassedTests { get; set; }
     private int FailedTests { get; set; }
-    
+
     public event Action<string>? TestCompleted;
-    
-    public void OnTestCompleted(string outcome)
+
+    public void OnTestCompleted(string finalOutcome)
     {
-        TotalTestsRan++;
-        switch (outcome)
+        switch (finalOutcome)
         {
             case "Passed":
                 PassedTests++;
@@ -21,7 +20,8 @@ public class TestMetricsManager
                 break;
         }
 
-        TestCompleted?.Invoke(outcome);
+        TotalTestsRan++;
+        TestCompleted?.Invoke(finalOutcome);
     }
 
     public void LogMetrics()

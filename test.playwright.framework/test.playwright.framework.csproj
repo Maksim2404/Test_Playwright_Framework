@@ -44,4 +44,9 @@
       <Content Include="bin\Debug\net8.0\browserType.json" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="pages\" />
+      <Folder Include="tests\" />
+    </ItemGroup>
+
 </Project>
