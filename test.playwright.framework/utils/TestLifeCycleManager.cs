@@ -6,11 +6,11 @@ using test.playwright.framework.config;
 
 namespace test.playwright.framework.utils;
 
-public class TestLifeCycleManager(BrowserManager browserManager)
+public class TestLifeCycleManager(BrowserManager browserManager, AtfConfig atfConfig)
 {
     public IPage Page { get; private set; } = null!;
     private IBrowserContext _browserContext = null!;
-    private AtfConfig _atfConfig;
+    private AtfConfig _atfConfig = atfConfig;
 
     private ILocator GetLocator(string selector)
     {

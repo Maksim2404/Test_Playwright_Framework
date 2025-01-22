@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("test.playwright.framework")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+96d704b8044f164421bd1dbbc934fbad96c3e5dd")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+69859f2a101cd6d7c2483f5965aa95d40b0d2de1")]
 [assembly: System.Reflection.AssemblyProductAttribute("test.playwright.framework")]
 [assembly: System.Reflection.AssemblyTitleAttribute("test.playwright.framework")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

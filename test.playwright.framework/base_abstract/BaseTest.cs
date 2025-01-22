@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Text;
 using Allure.Net.Commons;
 using Microsoft.Playwright;
 using Newtonsoft.Json;
@@ -9,26 +10,24 @@ using test.playwright.framework.config;
 using test.playwright.framework.security.sql;
 using test.playwright.framework.security.xss;
 using test.playwright.framework.utils;
+using test.playwright.framework.utils.interfaces;
 
 namespace test.playwright.framework.base_abstract;
 
 public abstract class BaseTest
 {
     private readonly TestMetricsManager _testMetricsManager;
-    protected readonly DiagnosticManager DiagnosticManager;
-    protected readonly TestLifeCycleManager TestLifeCycleManager;
+    protected internal readonly IDiagnosticManager DiagnosticManager;
+    protected internal readonly TestLifeCycleManager TestLifeCycleManager;
     protected IPage Page => TestLifeCycleManager.Page;
     private Stopwatch? _stopwatch;
     private DateTime _testStartTime;
     private Stopwatch? _testStopwatch;
-    protected static int TotalTestsRan;
-    protected static int PassedTests;
-    protected static int FailedTests;
+    private static int _totalTestsRan;
+    private static int _passedTests;
+    private static int _failedTests;
     protected readonly AtfConfig Config;
     protected readonly AllureLifecycle Allure;
-    private int _currentRetryCount;
-    private bool _testPassed;
-    private const int MaxRetries = 1;
     private readonly XssTestReport _xssReport = new();
     private readonly SqlInjectionTestReport _sqlInjectionReport = new();
 
@@ -53,12 +52,11 @@ public abstract class BaseTest
     protected BaseTest()
     {
         var browserManager = new BrowserManager();
-        TestLifeCycleManager = new TestLifeCycleManager(browserManager);
         Config = AtfConfig.ReadConfig();
+        TestLifeCycleManager = new TestLifeCycleManager(browserManager, Config);
         _testMetricsManager = new TestMetricsManager();
         DiagnosticManager = new DiagnosticManager(Config);
         Allure = AllureLifecycle.Instance;
-        _currentRetryCount = 0;
     }
 
     [OneTimeSetUp]
@@ -79,141 +77,98 @@ public abstract class BaseTest
     [SetUp]
     public async Task BeforeMethod()
     {
-        TotalTestsRan++;
+        _totalTestsRan++;
         _testStopwatch = Stopwatch.StartNew();
-        _currentRetryCount = 0;
-        _testPassed = false;
         await TestLifeCycleManager.InitializeTestAsync();
-    }
-
-    private async Task RetryTestAsync()
-    {
-        Log.Information($"Retrying test: Attempt {_currentRetryCount}/{MaxRetries}");
-
-        try
-        {
-            await TestLifeCycleManager.CloseTestAsync();
-            await TestLifeCycleManager.InitializeTestAsync();
-
-            var testMethodName = TestContext.CurrentContext.Test.MethodName;
-            if (testMethodName != null)
-            {
-                var testMethod = GetType().GetMethod(testMethodName);
-
-                if (testMethod != null)
-                {
-                    var result = testMethod.Invoke(this, null);
-                    if (result is Task taskResult)
-                    {
-                        await taskResult;
-                    }
-
-                    _testPassed = true;
-                    return;
-                }
-
-                Log.Error($"Test method '{testMethodName}' could not be found.");
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error($"Retry failed for test {TestContext.CurrentContext.Test.FullName}: {ex.Message}");
-        }
-    }
-
-    private void LogTestCompletion()
-    {
-        _testStopwatch?.Stop();
-        var finalStatus = _testPassed ? "Passed" : "Failed";
-
-        Log.Information($"Test status: {finalStatus}");
-        Log.Information($"Test finished at: {DateTime.Now}");
-
-        if (_testStopwatch != null) Log.Information($"Test execution time: {_testStopwatch.Elapsed}");
     }
 
     [TearDown]
     public async Task AfterMethod()
     {
         var testName = TestContext.CurrentContext.Test.FullName;
+        Log.Information($"Starting teardown for: {testName}");
 
         try
         {
-            if (TestContext.CurrentContext.Result.Outcome.Status == TestStatus.Passed || _testPassed)
+            var status = TestContext.CurrentContext.Result.Outcome.Status;
+            if (status == TestStatus.Passed)
             {
-                _testPassed = true;
-                PassedTests++;
+                _passedTests++;
                 _testMetricsManager.OnTestCompleted("Passed");
-                Log.Information($"Test passed on initial attempt: {testName}");
-                return;
+                Log.Information($"Test passed: {testName}");
             }
 
-            Log.Warning($"Initial test failed: {testName}");
-
-            var screenshotPath =
-                await DiagnosticManager.CaptureScreenshotAsync(Page, "FailedTest", includeTimestamp: true);
-
-            if (!string.IsNullOrEmpty(screenshotPath))
+            else
             {
-                await CaptureAllureScreenshot(Page);
-            }
+                _failedTests++;
+                _testMetricsManager.OnTestCompleted("Failed");
+                Log.Warning($"Test failed: {testName}");
 
-            DiagnosticManager.CaptureVideoOfFailedTest("videos/", "failedTests");
-
-            if (_currentRetryCount < MaxRetries)
-            {
-                _currentRetryCount++;
-                Log.Information($"Retrying test: {_currentRetryCount}/{MaxRetries}: {testName}");
-                await RetryTestAsync();
-
-                if (_testPassed)
+                var screenshotBuffer = await DiagnosticManager.CaptureScreenshotBufferAsync(TestLifeCycleManager.Page);
+                if (screenshotBuffer is { Length: > 0 })
                 {
-                    Log.Information($"Test passed on retry attempt {_currentRetryCount}: {testName}");
-                    PassedTests++;
-                    _testMetricsManager.OnTestCompleted("Passed");
-                    return;
+                    await DiagnosticManager.SaveBufferToFileAsync(screenshotBuffer, "FailedTest",
+                        includeTimestamp: true);
+                    DiagnosticManager.AttachBufferToReport(screenshotBuffer);
+                }
+                else
+                {
+                    Log.Warning("Screenshot buffer was empty.");
+                }
+                /*DiagnosticsManager.CaptureVideoOfFailedTest("videos/", "failedTests");*/
+            }
+
+            var logsObj = TestContext.CurrentContext.Test.Properties.Get("RetryLogs");
+            if (logsObj is List<string> { Count: > 0 } logs)
+            {
+                var combinedLogs = string.Join(Environment.NewLine, logs);
+                var logBytes = Encoding.UTF8.GetBytes(combinedLogs);
+                AllureApi.AddAttachment("Retry Logs", "text/plain", logBytes);
+            }
+
+            var screenshotsObj = TestContext.CurrentContext.Test.Properties.Get("RetryScreenshots");
+            if (screenshotsObj is List<(int attempt, byte[] buffer)> { Count: > 0 } screenshotList)
+            {
+                Log.Information(
+                    $"Found {screenshotList.Count} screenshot(s) from failed attempts in RetryOnFail logic.");
+
+                foreach (var (attemptNumber, buffer) in screenshotList)
+                {
+                    await DiagnosticManager.SaveBufferToFileAsync(
+                        buffer, $"RetryFailedTestAttempt_{attemptNumber}",
+                        includeTimestamp: true
+                    );
+                    DiagnosticManager.AttachBufferToReport(buffer);
                 }
             }
-
-            FailedTests++;
-            _testMetricsManager.OnTestCompleted("Failed");
-            Log.Warning($"Test failed after retry: {testName}");
         }
         catch (Exception ex)
         {
-            if (_testPassed)
-            {
-                Log.Information($"Retry succeeded for {testName}, suppressing initial failure: {ex.Message}");
-            }
-            else
-            {
-                Log.Error($"Unexpected error during teardown for {testName}: {ex.Message}");
-                throw;
-            }
+            Log.Error($"Unexpected error during teardown for {testName}: {ex.Message}");
+            throw;
         }
         finally
         {
-            LogTestCompletion();
-            Log.Information($"Tests Run So Far: {TotalTestsRan}, Passed: {PassedTests}, Failed: {FailedTests}");
-            await TestLifeCycleManager.CloseTestAsync();
+            _testStopwatch?.Stop();
+            Log.Information($"Test finished at: {DateTime.Now}");
+            if (_testStopwatch != null)
+                Log.Information($"Test execution time: {_testStopwatch.Elapsed}");
 
-            if (_testPassed)
-            {
-                Log.Information($"Final status - Test passed: {testName}");
-            }
+            Log.Information($"Tests Run So Far: {_totalTestsRan}, Passed: {_passedTests}, Failed: {_failedTests}");
         }
     }
 
     [OneTimeTearDown]
-    public void OneTimeTearDown()
+    public async Task OneTimeTearDown()
     {
+        await TestLifeCycleManager.CloseTestAsync();
         _testMetricsManager.LogMetrics();
         Log.Information("Test Suite Completed");
-        Log.CloseAndFlush();
+        await Log.CloseAndFlushAsync();
 
         _stopwatch?.Stop();
         Log.Information(
-            $"Final Metrics - Total tests run: {TotalTestsRan}, Passed: {PassedTests}, Failed: {FailedTests}");
+            $"Final Metrics - Total tests run: {_totalTestsRan}, Passed: {_passedTests}, Failed: {_failedTests}");
         Console.WriteLine($"Test suite finished at: {DateTime.Now}");
         if (_stopwatch != null) Console.WriteLine($"Test execution time: {_stopwatch.Elapsed}");
 
@@ -221,7 +176,7 @@ public abstract class BaseTest
         {
             const string xssReportPath = "reports/XssTestSummary.json";
             Directory.CreateDirectory("reports");
-            File.WriteAllText(xssReportPath, JsonConvert.SerializeObject(_xssReport, Formatting.Indented));
+            await File.WriteAllTextAsync(xssReportPath, JsonConvert.SerializeObject(_xssReport, Formatting.Indented));
 
             Log.Information($"XSS Test Summary Report saved at: {xssReportPath}");
             Console.WriteLine(JsonConvert.SerializeObject(_xssReport, Formatting.Indented));
@@ -230,7 +185,8 @@ public abstract class BaseTest
         if (_sqlInjectionReport.TotalFieldsTested <= 0) return;
         const string sqlReportPath = "reports/SqlInjectionTestSummary.json";
         Directory.CreateDirectory("reports");
-        File.WriteAllText(sqlReportPath, JsonConvert.SerializeObject(_sqlInjectionReport, Formatting.Indented));
+        await File.WriteAllTextAsync(sqlReportPath,
+            JsonConvert.SerializeObject(_sqlInjectionReport, Formatting.Indented));
 
         Log.Information($"SQL Injection Test Summary Report saved at: {sqlReportPath}");
         Console.WriteLine(JsonConvert.SerializeObject(_sqlInjectionReport, Formatting.Indented));

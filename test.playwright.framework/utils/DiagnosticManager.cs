@@ -1,13 +1,15 @@
-﻿using Microsoft.Playwright;
+﻿using Allure.Net.Commons;
+using Microsoft.Playwright;
 using NUnit.Framework;
 using Serilog;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using test.playwright.framework.config;
+using test.playwright.framework.utils.interfaces;
 
 namespace test.playwright.framework.utils;
 
-public class DiagnosticManager
+public class DiagnosticManager : IDiagnosticManager
 {
     private readonly string? _screenshotPath;
 
@@ -24,6 +26,65 @@ public class DiagnosticManager
         if (Directory.Exists(_screenshotPath)) return;
         Directory.CreateDirectory(_screenshotPath);
         Log.Information($"Created directory for screenshots: {_screenshotPath}");
+    }
+    
+    public async Task<byte[]> CaptureScreenshotBufferAsync(IPage page)
+    {
+        try
+        {
+            var buffer = await page.ScreenshotAsync(new PageScreenshotOptions
+            {
+                FullPage = false
+            });
+
+            Log.Information("Screenshot captured as a buffer.");
+            return buffer;
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Failed to capture screenshot buffer: {ex.Message}");
+            return [];
+        }
+    }
+
+    public async Task<string?> SaveBufferToFileAsync(byte[] buffer, string fileNamePrefix = "Screenshot",
+        bool includeTimestamp = false)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(_screenshotPath))
+            {
+                Log.Error("Screenshot path is not configured properly.");
+                return null;
+            }
+
+            var timestamp = includeTimestamp ? $"_{DateTime.Now:yyyyMMdd_HHmmss}" : string.Empty;
+            var testName = TestContext.CurrentContext.Test.Name.Replace(" ", "_");
+            var filePath = Path.Combine(_screenshotPath, $"{fileNamePrefix}_{testName}{timestamp}.png");
+
+            await File.WriteAllBytesAsync(filePath, buffer);
+            TestContext.AddTestAttachment(filePath, "Screenshot on error");
+            Log.Information($"Screenshot saved to file: {filePath}");
+            return filePath;
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Failed to save screenshot buffer to file: {ex.Message}");
+            return null;
+        }
+    }
+
+    public void AttachBufferToReport(byte[] buffer)
+    {
+        try
+        {
+            AllureApi.AddAttachment("Screenshot", "image/png", buffer);
+            Log.Information("Screenshot attached to Allure report.");
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Failed to attach screenshot buffer to Allure report: {ex.Message}");
+        }
     }
 
     public async Task<string?> CaptureScreenshotAsync(IPage page, string fileNamePrefix = "Screenshot",
@@ -55,7 +116,7 @@ public class DiagnosticManager
         return null;
     }
 
-    public static void CaptureVideoOfFailedTest(string videoDir, string failedVideoDir)
+    public void CaptureVideoOfFailedTest(string videoDir, string failedVideoDir)
     {
         try
         {
@@ -127,11 +188,9 @@ public class DiagnosticManager
                 }
             }
 
-            if (areDifferent)
-            {
-                await diffImage.SaveAsync(diffPath);
-                Log.Information($"Difference detected. Diff image saved at: {diffPath}");
-            }
+            if (!areDifferent) return !areDifferent;
+            await diffImage.SaveAsync(diffPath);
+            Log.Information($"Difference detected. Diff image saved at: {diffPath}");
 
             return !areDifferent;
         }
