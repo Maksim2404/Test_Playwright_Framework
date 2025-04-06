@@ -4,7 +4,7 @@ using test.playwright.framework.base_abstract;
 
 namespace test.playwright.framework.pages;
 
-public abstract class CodeChallenges(IPage page) : BaseProjectElements(page)
+public class CodeChallenges(IPage page) : BaseProjectElements(page)
 {
     public class LoginProcessor
     {
@@ -15,7 +15,7 @@ public abstract class CodeChallenges(IPage page) : BaseProjectElements(page)
                 return password == "secure123";
             }
         }
-        
+
         private static void ProcessLogins(List<string> logins)
         {
             foreach (var entry in logins)
