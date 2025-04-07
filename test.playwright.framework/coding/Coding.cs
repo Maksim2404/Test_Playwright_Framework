@@ -9,8 +9,11 @@ public class Coding
     public void PracticeRunner()
     {
         string palindromeWord = "racecar";
+        string randomWords = "Hello, world! 123";
         List<string> fruitsList = ["apple", "banana", "orange", "strawberry"];
         List<int> fruitsInt = [521, 2, 3, 4, 12, 41];
+        List<int> randomNumbers = [1, 2, 3, 1, 4, 6, 2, 6, 8, 9];
+        List<int> randomNumbers2 = [3, 2, 3, 1, 4, 6, 2, 6, 8, 9];
         Console.WriteLine(Practice.CountWords(fruitsList));
         Console.WriteLine(Practice.FindLargest(fruitsInt));
         Console.WriteLine(Practice.FindSmallest(fruitsInt));
@@ -19,6 +22,21 @@ public class Coding
         Console.WriteLine(Practice.IsPalindrome(palindromeWord));
         Console.WriteLine(Practice.IsPalindromeManual(palindromeWord));
         Console.WriteLine(string.Join(", ", Practice.FindAndReturnEvenNumbersList(fruitsInt)));
+        Console.WriteLine(string.Join(", ", Practice.FindAndReturnMatchingLetterWords(fruitsList)));
+        Console.WriteLine(string.Join(", ", Practice.SecondOption_FindAndReturnMatchingLetterWords(fruitsList, 'O')));
+        Console.WriteLine(string.Join(", ", Practice.FindAndReturnDuplicateNumbers(randomNumbers)));
+        Console.WriteLine(string.Join(", ", Practice.FindAndReturnDuplicateNumbersManual(randomNumbers2)));
+        var charFreq = Practice.CountCharsInWord(palindromeWord);
+        foreach (var entry in charFreq)
+        {
+            Console.WriteLine(entry);
+        }
+
+        var charFreq2 = Practice.CountOnlyLetters(randomWords);
+        foreach (var entry in charFreq2)
+        {
+            Console.WriteLine($"Here are results: {entry.Key}: {entry.Value}");
+        }
     }
 
     public static class Practice
@@ -217,6 +235,152 @@ public class Coding
 
             Log.Information("even numbers are: " + string.Join(", ", evenNumbersList));
             return evenNumbersList;
+        }
+
+        /*Find and return words that start with a specific letter from the List
+           1. Create an empty List to store all matching words
+           2. loop through the List
+           2. verify if the word matches the starting letter word
+           3. return the word if the condition is true*/
+
+        public static List<string> FindAndReturnMatchingLetterWords(List<string> words)
+        {
+            List<string> matchingWords = new List<string>();
+
+            foreach (var word in words)
+            {
+                if (word.StartsWith("a", StringComparison.OrdinalIgnoreCase))
+                {
+                    matchingWords.Add(word);
+                }
+                else
+                {
+                    Log.Warning("word doesn't start with a letter 'a', try another word.");
+                }
+            }
+
+            return matchingWords;
+        }
+
+        public static List<string> SecondOption_FindAndReturnMatchingLetterWords(List<string> words, char letter)
+        {
+            List<string> matchingWords = new List<string>();
+
+            foreach (var word in words)
+            {
+                if (char.ToLower(word[0]).Equals(char.ToLower(letter)))
+                {
+                    matchingWords.Add(word);
+                }
+                else
+                {
+                    Log.Warning($"word doesn't start with a letter {letter}, try another word.");
+                }
+            }
+
+            return matchingWords;
+        }
+
+        /*Find duplicate numbers in a List
+           1. Create an empty List to store all duplicates
+           2. loop through the List
+           2. verify if the number matches the previous number
+           3. return all matching numbers in a List*/
+
+        public static List<int> FindAndReturnDuplicateNumbers(List<int> numbers)
+        {
+            HashSet<int> duplicates = new HashSet<int>();
+            HashSet<int> seen = new HashSet<int>();
+
+            foreach (var number in numbers)
+            {
+                if (seen.Contains(number))
+                {
+                    duplicates.Add(number);
+                    Log.Information("Found the same number, adding to duplicate numbers.");
+                }
+                else
+                {
+                    seen.Add(number);
+                    Log.Information("The found number doesn't have duplicate numbers. Skipping...");
+                }
+            }
+
+            return duplicates.ToList();
+        }
+
+        /*An alternative way - more manual and complex*/
+
+        public static List<int> FindAndReturnDuplicateNumbersManual(List<int> numbers)
+        {
+            List<int> duplicates = new List<int>();
+
+            for (int i = 0; i < numbers.Count; i++)
+            {
+                for (int j = i + 1; j < numbers.Count; j++)
+                {
+                    if (numbers[i] == numbers[j])
+                    {
+                        if (!duplicates.Contains(numbers[i]))
+                        {
+                            duplicates.Add(numbers[i]);
+                        }
+                    }
+                }
+            }
+
+            Console.WriteLine(string.Join(", ", duplicates));
+            return duplicates;
+        }
+
+        /*Count the frequency of each character in a String:
+            1. Create a Dictionary to store count
+            2. create a count variable for repeated char
+            3. Loop through the
+            3. return a dictionary values*/
+
+        public static Dictionary<char, int> CountCharsInWord(string word)
+        {
+            char[] charArray = word.ToCharArray();
+            Dictionary<char, int> countChars = new Dictionary<char, int>();
+
+            foreach (var letter in charArray)
+            {
+                if (!countChars.ContainsKey(letter))
+                {
+                    countChars[letter] = 1;
+                }
+                else
+                {
+                    countChars[letter]++;
+                }
+            }
+
+            return countChars;
+        }
+
+        /*Count only letters (ignore punctuation, spaces, numbers):*/
+
+        public static Dictionary<char, int> CountOnlyLetters(string word)
+        {
+            Dictionary<char, int> countChars = new Dictionary<char, int>();
+
+            foreach (var letter in word.ToLower())
+            {
+                if (char.IsLetter(letter) && !letter.Equals('_'))
+                {
+                    if (!countChars.ContainsKey(letter))
+                    {
+                        countChars[letter] = 1;
+                    }
+                    else
+                    {
+                        countChars[letter]++;
+                    }
+                }
+            }
+
+            return countChars;
         }
     }
 }
