@@ -1159,7 +1159,7 @@
       "NUnit.Extension.NUnitV2Driver/3.8.0": {
         "type": "package"
       },
-      "NUnit.Extension.NUnitV2ResultWriter/3.6.0": {
+      "NUnit.Extension.NUnitV2ResultWriter/3.8.0": {
         "type": "package"
       },
       "NUnit.Extension.TeamCityEventListener/1.0.7": {
@@ -4715,19 +4715,23 @@
         "tools/nunit.v2.driver.dll"
       ]
     },
-    "NUnit.Extension.NUnitV2ResultWriter/3.6.0": {
-      "sha512": "P/Nc+wgFRe3dT59/VjhiIT0SWfLMbb/Vc9AtBU3L71VOCs8zQnuNjCOEFLQL/Mq6XSaZeB2Sug9tUgTfCnQk9w==",
+    "NUnit.Extension.NUnitV2ResultWriter/3.8.0": {
+      "sha512": "uvbFF+RcJdHcB8A+XmkLz0ANVbpU8+A9AghAMZ3y/JORHz15Hps6U4Yy8oP7OWQ+4lm4bA65D1CcIFLIpVX/5A==",
       "type": "package",
-      "path": "nunit.extension.nunitv2resultwriter/3.6.0",
+      "path": "nunit.extension.nunitv2resultwriter/3.8.0",
       "hasTools": true,
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
-        "CHANGES.txt",
         "LICENSE.txt",
-        "nunit.extension.nunitv2resultwriter.3.6.0.nupkg.sha512",
+        "nunit.extension.nunitv2resultwriter.3.8.0.nupkg.sha512",
         "nunit.extension.nunitv2resultwriter.nuspec",
-        "tools/nunit-v2-result-writer.dll"
+        "nunit_256.png",
+        "tools/net462/nunit-v2-result-writer.dll",
+        "tools/net462/nunit.engine.api.dll",
+        "tools/net6.0/nunit-v2-result-writer.dll",
+        "tools/net6.0/nunit.engine.api.dll",
+        "tools/nunit-v2-result-writer.legacy.addins"
       ]
     },
     "NUnit.Extension.TeamCityEventListener/1.0.7": {
@@ -8685,6 +8689,7 @@
       "Microsoft.Playwright >= 1.48.0",
       "Microsoft.Playwright.NUnit >= 1.48.0",
       "Microsoft.Playwright.TestAdapter >= 1.48.0",
+      "NUnit.Extension.NUnitV2ResultWriter >= 3.8.0",
       "NUnit3TestAdapter >= 4.6.0",
       "RestAssured.Net >= 4.4.0",
       "Serilog >= 4.1.0",
@@ -8802,6 +8807,10 @@
           "Microsoft.Playwright.TestAdapter": {
             "target": "Package",
             "version": "[1.48.0, )"
+          },
+          "NUnit.Extension.NUnitV2ResultWriter": {
+            "target": "Package",
+            "version": "[3.8.0, )"
           },
           "NUnit3TestAdapter": {
             "target": "Package",
