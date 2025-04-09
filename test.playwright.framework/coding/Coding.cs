@@ -1,4 +1,5 @@
-﻿using NUnit.Framework;
+﻿using System.Text;
+using NUnit.Framework;
 using Serilog;
 
 namespace test.playwright.framework.coding;
@@ -14,6 +15,7 @@ public class Coding
         List<int> fruitsInt = [521, 2, 3, 4, 12, 41];
         List<int> randomNumbers = [1, 2, 3, 1, 4, 6, 2, 6, 8, 9];
         List<int> randomNumbers2 = [3, 2, 3, 1, 4, 6, 2, 6, 8, 9];
+        int[] numbers = [11, 2, 3, 4, 5, 1, 7, 9, 8];
         Console.WriteLine(Practice.CountWords(fruitsList));
         Console.WriteLine(Practice.FindLargest(fruitsInt));
         Console.WriteLine(Practice.FindSmallest(fruitsInt));
@@ -37,6 +39,8 @@ public class Coding
         {
             Console.WriteLine($"Here are results: {entry.Key}: {entry.Value}");
         }
+
+        Console.WriteLine(string.Join(", ", Practice.BubbleSortArray(numbers)));
     }
 
     public static class Practice
@@ -68,6 +72,34 @@ public class Coding
             string reversedWord = new string(charArray);
 
             Console.WriteLine(reversedWord);
+        }
+
+        /*Reverse string manually*/
+
+        public static string ReverseStringWordManually(string word)
+        {
+            string reversedWord = "";
+
+            for (int i = word.Length - 1; i >= 0; i--)
+            {
+                reversedWord += word[i];
+            }
+
+            return reversedWord;
+        }
+
+        /*Reverse string manually using StringBuilder*/
+
+        public static string ReverseStringUsingStringBuilder(string word)
+        {
+            var reversedWord = new StringBuilder();
+
+            for (int i = word.Length - 1; i >= 0; i--)
+            {
+                reversedWord.Append(word[i]);
+            }
+
+            return reversedWord.ToString();
         }
 
         // Checking even number
@@ -177,7 +209,6 @@ public class Coding
 
         /*Check if a Word is a Palindrome (the word reads the same backward as forward)
             1. Create an empty Array to store reverse order
-            2. loop through the string
             2. verify if the reverse equal the original word
             3. return the string if the condition is true*/
 
@@ -381,6 +412,155 @@ public class Coding
             }
 
             return countChars;
+        }
+
+        /*Find an average*/
+
+        public static int FindAverage(List<int> numbers)
+        {
+            int sum = 0;
+            int average = 0;
+
+            foreach (var number in numbers)
+            {
+                sum += number;
+                average = sum / numbers.Count;
+            }
+
+            return average;
+        }
+
+        /*Find a max value in a complex array*/
+
+        public static int FindMaxArray(int[][] numbers)
+        {
+            int max = numbers[0][0];
+
+            for (int i = 1; i < numbers.Length; i++)
+            {
+                for (int j = 1; j < numbers[i].Length; j++)
+                {
+                    if (numbers[i][j] > max)
+                    {
+                        max = numbers[i][j];
+                    }
+                }
+            }
+
+            return max;
+        }
+
+        /*Make a bubble sort in array*/
+
+        public static int[] BubbleSortArray(int[] numbers)
+        {
+            bool swapped = false;
+
+            while (!swapped)
+            {
+                swapped = true;
+
+                for (int i = 1; i < numbers.Length; i++)
+                {
+                    if (numbers[i - 1] > numbers[i])
+                    {
+                        (numbers[i - 1], numbers[i]) = (numbers[i], numbers[i - 1]);
+                        swapped = false;
+                    }
+                }
+            }
+
+            return numbers;
+        }
+
+        /*Find a sum of numbers in a list that would be equal to the external number
+            1. find the right indexes from the list
+            2. verify they're matching the target number
+            3. return list indexes*
+            For each number:
+            Calculate what you need.
+            Check if you already have what you need.
+            If yes, done!
+            If no, save this number.*/
+
+        public static int[] TwoSumBruteForce(int[] numbers, int target)
+        {
+            for (int i = 0; i < numbers.Length; i++)
+            {
+                for (int j = 0; j < numbers.Length; j++)
+                {
+                    if (numbers[i] + numbers[j] == target)
+                    {
+                        return [i, j];
+                    }
+                }
+            }
+
+            return [];
+        }
+
+        /*FizzBuzz*/
+
+        public static void FindAndReturnFizzBuzz(int fizz, int buzz)
+        {
+            Log.Information("FizzBuzz starting...");
+            for (int i = 1; i <= 100; i++)
+            {
+                if (i % fizz == 0 && i % buzz == 0)
+                {
+                    Console.WriteLine("FizzBuzz");
+                }
+                else if (i % fizz == 0)
+                {
+                    Console.WriteLine("Fizz");
+                }
+                else if (i % buzz == 0)
+                {
+                    Console.WriteLine("Buzz");
+                }
+                else
+                {
+                    Console.WriteLine(i);
+                    Log.Information($"Number {i} is neither divisible by {fizz} nor {buzz}.");
+                }
+            }
+        }
+
+        /*Merge two arrays into one sorted*/
+
+        public static List<int> MergeAndReturnSingleArray(List<int> num1, List<int> num2)
+        {
+            List<int> finalArray = new List<int>();
+            int i = 0;
+            int j = 0;
+
+            while (i < num1.Count && j < num2.Count)
+            {
+                if (num1[i] < num2[j])
+                {
+                    finalArray.Add(num1[i]);
+                    i++;
+                }
+                else
+                {
+                    finalArray.Add(num2[j]);
+                    j++;
+                }
+            }
+
+            while (i < num1.Count)
+            {
+                finalArray.Add(num1[i]);
+                i++;
+            }
+
+            while (j < num2.Count)
+            {
+                finalArray.Add(num2[j]);
+                j++;
+            }
+
+            return finalArray;
         }
     }
 }
