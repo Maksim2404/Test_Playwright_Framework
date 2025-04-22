@@ -29,9 +29,13 @@ public class RetryOnFailAttribute(int count = -1) : NUnitAttribute, IWrapSetUpTe
         {
             var attemptScreenshots = new List<(int attempt, byte[] buffer)>();
             var attemptLogs = new List<string>();
+            var totalAttempts = retryCount;
 
-            for (var attempt = 1; attempt <= retryCount; attempt++)
+            for (var attempt = 1; attempt <= totalAttempts; attempt++)
             {
+                var remaining = totalAttempts - attempt;
+                context.CurrentTest.Properties.Set("RemainingRetries", remaining);
+
                 innerCommand.Execute(context);
 
                 if (context.CurrentResult.ResultState.Status != TestStatus.Failed)
@@ -43,9 +47,7 @@ public class RetryOnFailAttribute(int count = -1) : NUnitAttribute, IWrapSetUpTe
                     {
                         var page = baseTest.TestLifeCycleManager.Page;
                         var diagMgr = baseTest.DiagnosticManager;
-
-                        var buffer = diagMgr.CaptureScreenshotBufferAsync(page)
-                            .GetAwaiter().GetResult();
+                        var buffer = diagMgr.CaptureScreenshotBufferAsync(page).GetAwaiter().GetResult();
 
                         attemptScreenshots.Add((attempt, buffer));
                         context.CurrentTest.Properties.Set("RetryScreenshots", attemptScreenshots);

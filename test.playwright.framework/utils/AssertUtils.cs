@@ -1,4 +1,5 @@
-﻿using Microsoft.Playwright;
+﻿using System.Text.RegularExpressions;
+using Microsoft.Playwright;
 using Serilog;
 using test.playwright.framework.base_abstract;
 
@@ -7,13 +8,86 @@ namespace test.playwright.framework.utils;
 public class AssertUtils(IPage page) : BasePage(page)
 {
     private const string NoDataSelector = "//tr[@class='v-data-table__empty-wrapper']//td";
+    private ILocator EllipsisMenuList => Page.Locator("//div[@class='v-overlay__content']//div[@role='listbox']");
 
-    protected async Task<bool> VerifyField(ILocator rowLocator, string xpath, string expectedValue)
+    private static readonly Dictionary<string, List<string>> EllipsisMenuExpectations = new()
+    {
+        {
+            "Project",
+            [
+                "View Project",
+                "Edit Project",
+                "Manage Languages",
+                "Delete Project"
+            ]
+        }
+    };
+
+    private async Task<List<string>> GetEllipsisMenuOptions()
+    {
+        await WaitForLocatorToExistAsync(EllipsisMenuList);
+
+        var menuItems = EllipsisMenuList.Locator("div.v-list-item-title");
+        var count = await menuItems.CountAsync();
+        var texts = new List<string>();
+
+        for (var i = 0; i < count; i++)
+        {
+            var text = await menuItems.Nth(i).InnerTextAsync();
+            texts.Add(text.Trim());
+        }
+
+        return texts;
+    }
+
+    public async Task<bool> VerifyEllipsisMenu(string entityType)
+    {
+        var expectedItems = EllipsisMenuExpectations[entityType];
+        var actualItems = await GetEllipsisMenuOptions();
+
+        if (actualItems.Count != expectedItems.Count)
+        {
+            Log.Error($"Menu count mismatch for {entityType}: " +
+                      $"Expected {expectedItems.Count}, got {actualItems.Count}");
+            return false;
+        }
+
+        for (var i = 0; i < expectedItems.Count; i++)
+        {
+            if (string.Equals(expectedItems[i], actualItems[i], StringComparison.OrdinalIgnoreCase)) continue;
+            Log.Error($"Menu item mismatch at index {i}. " +
+                      $"Expected '{expectedItems[i]}', got '{actualItems[i]}'.");
+            return false;
+        }
+
+        Log.Information($"Ellipsis menu items for {entityType} matched perfectly.");
+        return true;
+    }
+
+    protected async Task<bool> VerifyField(ILocator rowLocator, string xpath, string expectedValue,
+        bool partialMatch = false)
     {
         var displayedValue = await rowLocator.Locator(xpath).TextContentAsync();
-        var match = displayedValue != null && displayedValue.Trim().Equals(expectedValue);
-        Log.Information($"Verifying field: Expected - {expectedValue}, Displayed - {displayedValue}");
-        return match;
+        if (displayedValue == null)
+        {
+            Log.Warning($"No text found for xpath: {xpath}");
+            return false;
+        }
+
+        displayedValue = displayedValue.Trim();
+        if (!partialMatch)
+        {
+            var isExact = displayedValue.Equals(expectedValue, StringComparison.Ordinal);
+            Log.Information($"Verifying field exact: Expected - '{expectedValue}', Actual - '{displayedValue}'");
+            return isExact;
+        }
+        else
+        {
+            var contains = displayedValue.Contains(expectedValue, StringComparison.OrdinalIgnoreCase);
+            Log.Information(
+                $"Verifying field partial: Expected (substring) - '{expectedValue}', Actual - '{displayedValue}'");
+            return contains;
+        }
     }
 
     protected async Task<bool> VerifyFieldContainsText(ILocator rowLocator, string xpath, string expectedValue)
@@ -32,17 +106,17 @@ public class AssertUtils(IPage page) : BasePage(page)
         return match;
     }
 
-    private async Task<ILocator> ResolveLocatorAsync(object selectorOrLocator)
+    protected async Task<ILocator> EnsureLocatorAsync(object selectorOrLocator)
     {
         ILocator locator;
         switch (selectorOrLocator)
         {
             case string selector:
-                await WaitForSelectorToExistAsync(selector);
                 locator = Page.Locator(selector);
+                await WaitForLocatorToExistAsync(locator);
                 break;
             case ILocator loc:
-                await WaitForLocator(loc);
+                await WaitForLocatorToExistAsync(loc);
                 locator = loc;
                 break;
             default:
@@ -53,69 +127,92 @@ public class AssertUtils(IPage page) : BasePage(page)
         return locator;
     }
 
-    protected async Task<bool> VerifyText(string text, object selectorOrLocator)
+    private string RemoveLeadingDigits(string rawText)
     {
-        var locator = await ResolveLocatorAsync(selectorOrLocator);
-
-        if (await locator.CountAsync() == 0)
+        var match = Regex.Match(rawText, @"^\d+(?<someValue>.+)$");
+        if (match.Success)
         {
-            Log.Warning($"No text found within this '{text}' value.");
-            return false;
+            return match.Groups["someValue"].Value.Trim();
         }
 
-        var displayedValue = await locator.TextContentAsync();
-        var textMatch = displayedValue != null && displayedValue.Trim().Equals(text);
-        Log.Information($"Verifying field: Expected - {text}, Displayed - {displayedValue}");
-        return textMatch;
+        Log.Warning($"Task node has unexpected format: {rawText}");
+        return string.Empty;
     }
 
-    private static async Task WaitForLocator(ILocator locator)
+    private async Task<string> GetTextFromDiv(string title, string prefix)
+    {
+        var selector = $"//div[b[contains(text(), '{title}')]]";
+        var textContent = await Page.EvalOnSelectorAsync<string>(selector, "div => div.textContent");
+        var startIndex = textContent.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
+        var text = textContent[startIndex..].Trim();
+        return text;
+    }
+
+    protected async Task<bool> IsToggledOn(ILocator toggleLocator)
+    {
+        await WaitForLocatorToExistAsync(toggleLocator);
+        var isChecked = await toggleLocator.IsCheckedAsync();
+        Log.Information($"Toggle checked state: {isChecked}");
+        return isChecked;
+    }
+
+    protected async Task<bool> WaitAndVerifySingleElementText(string expectedText, object selectorOrLocator,
+        bool partialMatch = false, bool ignoreCase = false)
     {
         try
         {
-            await locator.WaitForAsync(new LocatorWaitForOptions { Timeout = 10000 });
-        }
-        catch (TimeoutException ex)
-        {
-            Log.Error($"Timeout waiting for selector: {locator} - {ex.Message}");
-            throw;
-        }
-    }
+            var locator = await EnsureLocatorAsync(selectorOrLocator);
 
-    protected async Task<bool> VerifyPopupText(string expectedText, object selectorOrLocator)
-    {
-        try
-        {
-            var locator = await ResolveLocatorAsync(selectorOrLocator);
-
-            if (await locator.CountAsync() == 0)
+            var count = await locator.CountAsync();
+            if (count == 0)
             {
-                Log.Warning("Popup did not appear.");
+                Log.Error($"Expected at least 1 match for locator, but found {count}.");
                 return false;
             }
 
             var text = await locator.TextContentAsync();
-            if (text != null && text.Trim().Equals(expectedText))
+            if (string.IsNullOrWhiteSpace(text))
             {
-                Log.Information($"Popup verification successful: '{expectedText}' was found.");
-                return true;
+                Log.Error("Element text is null or empty.");
+                return false;
+            }
+
+            text = text.Trim();
+            var comparisonType = ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+            bool matches;
+            if (partialMatch)
+            {
+                matches = text.Contains(expectedText, StringComparison.OrdinalIgnoreCase);
+                Log.Information(matches
+                    ? $"Partial match found. Expected substring '{expectedText}', Actual '{text}'."
+                    : $"Partial match FAILED. Expected substring '{expectedText}', Actual '{text}'.");
             }
             else
             {
-                Log.Warning($"Text did not match. Expected: '{expectedText}', Found: '{text}'.");
-                return false;
+                matches = text.Equals(expectedText, comparisonType);
+                Log.Information(matches
+                    ? $"Exact match succeeded. Expected '{expectedText}', Actual '{text}'."
+                    : $"Exact match FAILED. Expected '{expectedText}', Actual '{text}'.");
             }
+
+            return matches;
         }
-        catch (TimeoutException)
+        catch (TimeoutException tex)
         {
-            Log.Warning("Failed to find the popup within the specified timeout.");
+            Log.Error($"Timeout waiting for the element to be visible. {tex.Message}");
+            return false;
+        }
+        catch (PlaywrightException ex)
+        {
+            Log.Error($"Error while waiting/verifying single element text: {ex.Message}");
             return false;
         }
     }
 
     public async Task<bool> VerifyNoDataFound(string text)
     {
-        var noDataStatusDisplayed = await VerifyText(text, NoDataSelector);
+        var noDataStatusDisplayed = await WaitAndVerifySingleElementText(text, NoDataSelector);
 
         if (!noDataStatusDisplayed)
         {

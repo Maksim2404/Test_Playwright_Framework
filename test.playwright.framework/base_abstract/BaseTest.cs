@@ -23,13 +23,36 @@ public abstract class BaseTest
     private Stopwatch? _stopwatch;
     private DateTime _testStartTime;
     private Stopwatch? _testStopwatch;
-    private static int _totalTestsRan;
-    private static int _passedTests;
-    private static int _failedTests;
+    protected static int TotalTestsRan;
+    protected static int PassedTests;
+    protected static int FailedTests;
     protected readonly AtfConfig Config;
     protected readonly AllureLifecycle Allure;
     private readonly XssTestReport _xssReport = new();
     private readonly SqlInjectionTestReport _sqlInjectionReport = new();
+    private const string DefaultDialogAction = "Accept";
+
+    protected void LogTestCompletion()
+    {
+        _testStopwatch?.Stop();
+        Log.Information($"Test finished at: {DateTime.Now}");
+
+        if (_testStopwatch != null) Log.Information($"Test execution time: {_testStopwatch.Elapsed}");
+    }
+
+    private async void OnDialogHandled(object? sender, IDialog dialog)
+    {
+        Log.Information($"Dialog triggered with message: '{dialog.Message}'");
+        if (DefaultDialogAction.Equals("Accept", StringComparison.OrdinalIgnoreCase))
+        {
+            await dialog.AcceptAsync();
+            Log.Information("Dialog accepted automatically.");
+        }
+        else
+        {
+            await dialog.DismissAsync();
+        }
+    }
 
     protected void UpdateGlobalXssReport(XssTestReport xssReport)
     {
@@ -77,9 +100,10 @@ public abstract class BaseTest
     [SetUp]
     public async Task BeforeMethod()
     {
-        _totalTestsRan++;
+        TotalTestsRan++;
         _testStopwatch = Stopwatch.StartNew();
         await TestLifeCycleManager.InitializeTestAsync();
+        TestLifeCycleManager.Page.Dialog += OnDialogHandled;
     }
 
     [TearDown]
@@ -93,14 +117,14 @@ public abstract class BaseTest
             var status = TestContext.CurrentContext.Result.Outcome.Status;
             if (status == TestStatus.Passed)
             {
-                _passedTests++;
+                PassedTests++;
                 _testMetricsManager.OnTestCompleted("Passed");
                 Log.Information($"Test passed: {testName}");
             }
 
             else
             {
-                _failedTests++;
+                FailedTests++;
                 _testMetricsManager.OnTestCompleted("Failed");
                 Log.Warning($"Test failed: {testName}");
 
@@ -149,26 +173,37 @@ public abstract class BaseTest
         }
         finally
         {
+            var remainProp = TestContext.CurrentContext.Test.Properties.Get("RemainingRetries");
+            if (remainProp is int remaining and > 0)
+            {
+                Log.Information($"Skipping CloseTestAsync because {remaining} retry attempts remain.");
+            }
+            else
+            {
+                TestLifeCycleManager.Page.Dialog -= OnDialogHandled;
+                await TestLifeCycleManager.CloseTestAsync();
+                Log.Information("Closed browser because test is complete (or final fail).");
+            }
+
             _testStopwatch?.Stop();
             Log.Information($"Test finished at: {DateTime.Now}");
             if (_testStopwatch != null)
                 Log.Information($"Test execution time: {_testStopwatch.Elapsed}");
 
-            Log.Information($"Tests Run So Far: {_totalTestsRan}, Passed: {_passedTests}, Failed: {_failedTests}");
+            Log.Information($"Tests Run So Far: {TotalTestsRan}, Passed: {PassedTests}, Failed: {FailedTests}");
         }
     }
 
     [OneTimeTearDown]
     public async Task OneTimeTearDown()
     {
-        await TestLifeCycleManager.CloseTestAsync();
         _testMetricsManager.LogMetrics();
         Log.Information("Test Suite Completed");
         await Log.CloseAndFlushAsync();
 
         _stopwatch?.Stop();
         Log.Information(
-            $"Final Metrics - Total tests run: {_totalTestsRan}, Passed: {_passedTests}, Failed: {_failedTests}");
+            $"Final Metrics - Total tests run: {TotalTestsRan}, Passed: {PassedTests}, Failed: {FailedTests}");
         Console.WriteLine($"Test suite finished at: {DateTime.Now}");
         if (_stopwatch != null) Console.WriteLine($"Test execution time: {_stopwatch.Elapsed}");
 

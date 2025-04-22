@@ -89,6 +89,36 @@ public class BrowserManager
         };
     }
 
+    public async Task SimulateNetworkThrottlingAsync(IBrowserContext context, string networkType)
+    {
+        Log.Information("Applying network throttling: {NetworkType}", networkType);
+
+        await context.UnrouteAsync("**/*");
+
+        switch (networkType.ToLower())
+        {
+            case "slow3g":
+                await context.RouteAsync("**/*", async route =>
+                {
+                    await Task.Delay(3000);
+                    await route.ContinueAsync();
+                });
+                break;
+            case "fast3g":
+                await context.RouteAsync("**/*", async route =>
+                {
+                    await Task.Delay(500);
+                    await route.ContinueAsync();
+                });
+                break;
+            default:
+                Log.Warning("Unknown network type: {NetworkType}", networkType);
+                break;
+        }
+
+        Log.Information("Network throttling applied: {NetworkType}", networkType);
+    }
+
     public async Task SetOfflineModeAsync(IBrowserContext context, bool isOffline)
     {
         await context.SetOfflineAsync(isOffline);

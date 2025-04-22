@@ -7,7 +7,7 @@ namespace test.playwright.framework.base_abstract;
 public abstract class BasePage(IPage page)
 {
     protected IPage Page { get; } = page ?? throw new ArgumentNullException(nameof(page), "Page cannot be null");
-    
+
     protected async Task<IPage> OpenNewPageAsync(Func<Task> actionToOpenPage)
     {
         var newPageTask = Page.Context.WaitForPageAsync();
@@ -18,21 +18,16 @@ public abstract class BasePage(IPage page)
         await newPage.WaitForLoadStateAsync(LoadState.NetworkIdle);
         return newPage;
     }
-    
+
     protected internal async Task<IPage> CloseCurrentPageAndSwitchBackAsync()
     {
         await Page.CloseAsync();
 
         var allPages = Page.Context.Pages;
         var previousPage = allPages[^1];
-        
+
         await previousPage.BringToFrontAsync(); // Ensure the previous page is in the foreground
         return previousPage;
-    }
-
-    private ILocator GetLocator(string selector)
-    {
-        return Page.Locator(selector.StartsWith("xpath=") ? selector[6..] : selector);
     }
 
     protected async Task WaitForNetworkIdle()
@@ -46,118 +41,101 @@ public abstract class BasePage(IPage page)
             new PageWaitForLoadStateOptions { Timeout = 15000 });
     }
 
-    protected async Task<bool> VerifyElementVisibleAndEnable(string selector)
+    protected async Task<bool> IsElementReadyForInteraction(ILocator locator, int timeoutMs = 10000)
     {
         try
         {
-            await Page.WaitForSelectorAsync(selector, new PageWaitForSelectorOptions { Timeout = 15000 });
-            await Page.WaitForSelectorAsync(selector,
-                new PageWaitForSelectorOptions { State = WaitForSelectorState.Visible, Timeout = 15000 });
+            await locator.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Visible,
+                Timeout = timeoutMs
+            });
 
-            var isVisible = await GetLocator(selector).IsVisibleAsync();
-            var isEnabled = await GetLocator(selector).IsEnabledAsync();
-            return isVisible && isEnabled;
+            var stopwatch = Stopwatch.StartNew();
+            while (stopwatch.ElapsedMilliseconds < timeoutMs)
+            {
+                if (await locator.IsEnabledAsync())
+                {
+                    Log.Information($"Element '{locator}' is visible and enabled. Ready for interaction.");
+                    return true;
+                }
+
+                await Task.Delay(250);
+            }
+
+            Log.Information($"Element '{locator}' is visible but stayed disabled up to {timeoutMs}ms.");
+            return false;
+        }
+        catch (TimeoutException ex)
+        {
+            Log.Error($"Element '{locator}' not visible within {timeoutMs}ms: {ex.Message}");
+            return false;
         }
         catch (PlaywrightException ex)
         {
-            Log.Error($"Failed to verify if element with selector '{selector}' is visible and enabled: {ex.Message}");
+            Log.Error($"Failed to verify if element '{locator}' is ready for interaction: {ex.Message}");
+            return false;
         }
-
-        return false;
     }
 
-    protected async Task HoverToElement(string selector)
+    private async Task HoverToElement(ILocator locator)
     {
-        if (selector == null)
-        {
-            throw new ArgumentNullException(nameof(selector), "Selector cannot be null.");
-        }
+        if (!await IsElementReadyForInteraction(locator)) return;
+        await locator.HoverAsync();
+        Log.Information($"Hovered over element: {locator}");
+    }
 
+    protected async Task Click(ILocator locator)
+    {
         try
         {
-            await WaitForNetworkIdle();
-            if (await VerifyElementVisibleAndEnable(selector))
+            if (await IsElementReadyForInteraction(locator))
             {
-                await GetLocator(selector).HoverAsync();
-
-                await WaitForNetworkIdle();
-                Log.Information($"Hovered over element: {selector}");
+                await HoverToElement(locator);
+                await locator.ClickAsync();
+                Log.Information($"Clicked on element: {locator}");
             }
         }
         catch (PlaywrightException ex)
         {
-            Log.Error($"Failed to hover over element with selector '{selector}': {ex.Message}");
+            Log.Error($"Failed to click on element with locator '{locator}': {ex.Message}");
             throw;
         }
     }
 
-    protected async Task Click(string selector)
+    protected async Task ClickElementByMouse(ILocator locator)
+    {
+        if (!await IsElementReadyForInteraction(locator)) return;
+
+        var boundingBox = await locator.BoundingBoxAsync();
+        if (boundingBox != null)
+        {
+            var x = boundingBox.X + boundingBox.Width / 2;
+            var y = boundingBox.Y + boundingBox.Height / 2;
+            await Page.Mouse.ClickAsync(x, y);
+            Log.Information($"Clicked on element {locator} by mouse!");
+        }
+        else
+        {
+            Log.Information("Element's bounding box is not available");
+        }
+    }
+
+    protected async Task DoubleClickElement(ILocator locator)
     {
         try
         {
-            await WaitForNetworkIdle();
-            if (await VerifyElementVisibleAndEnable(selector))
-            {
-                await GetLocator(selector).ClickAsync();
+            await IsElementReadyForInteraction(locator);
+            await locator.DblClickAsync();
 
-                await WaitForNetworkIdle();
-                Log.Information($"Clicked on element: {selector}");
-            }
+            await WaitForNetworkIdle();
+            Log.Information($"Double-clicked on element: {locator}");
         }
         catch (PlaywrightException ex)
         {
-            Log.Error($"Failed to click on element with selector '{selector}': {ex.Message}");
+            Log.Error($"Failed to double-click on element with locator '{locator}': {ex.Message}");
             throw;
         }
-    }
-
-    protected async Task ClickByMouse(string selector)
-    {
-        await VerifyElementVisibleAndEnable(selector);
-        var element = GetLocator(selector);
-        var boundingBox = await element.BoundingBoxAsync();
-        {
-            if (boundingBox != null)
-            {
-                var x = boundingBox.X + boundingBox.Width / 2;
-                var y = boundingBox.Y + boundingBox.Height / 2;
-                await Page.Mouse.ClickAsync(x, y);
-                Log.Information($"Clicked on element {selector} by mouse!");
-            }
-            else
-            {
-                Log.Information("Element's bounding box is not available");
-            }
-        }
-    }
-
-    protected async Task DoubleClick(string selector)
-    {
-        try
-        {
-            await WaitForNetworkIdle();
-            await VerifyElementVisibleAndEnable(selector);
-            await GetLocator(selector).DblClickAsync();
-
-            await WaitForNetworkIdle();
-            Log.Information($"Double-clicked on element: {selector}");
-        }
-        catch (PlaywrightException ex)
-        {
-            Log.Error($"Failed to double-click on element with selector '{selector}': {ex.Message}");
-            throw;
-        }
-    }
-
-    protected async Task ClickByJavaScript(string selector)
-    {
-        await Page.EvaluateAsync(@"(selector) => {const element = document.querySelector(selector);
-        if (element) element.click(); else throw new Error('Element not found');}", selector);
-    }
-
-    public int GetListSize(List<IElementHandle> list)
-    {
-        return list.Count;
     }
 
     public async Task<string> GetTitle()
@@ -167,19 +145,19 @@ public abstract class BasePage(IPage page)
         return title;
     }
 
-    public async Task DragAndDrop(string sourceSelector, string targetSelector)
+    public async Task DragAndDrop(ILocator sourceLocator, ILocator targetLocator)
     {
         try
         {
-            var isSourceVisibleAndEnabled = await VerifyElementVisibleAndEnable(sourceSelector);
-            var isTargetVisibleAndEnabled = await VerifyElementVisibleAndEnable(targetSelector);
+            var isSourceVisibleAndEnabled = await IsElementReadyForInteraction(sourceLocator);
+            var isTargetVisibleAndEnabled = await IsElementReadyForInteraction(targetLocator);
 
             if (isSourceVisibleAndEnabled && isTargetVisibleAndEnabled)
             {
                 {
-                    var sourceElement = GetLocator(sourceSelector).First;
+                    var sourceElement = sourceLocator.First;
                     {
-                        var targetElement = GetLocator(targetSelector).First;
+                        var targetElement = targetLocator.First;
 
                         await sourceElement.DragToAsync(targetElement);
                     }
@@ -196,63 +174,41 @@ public abstract class BasePage(IPage page)
         }
     }
 
-    protected async Task Clear(string selector)
+    protected async Task Clear(ILocator locator)
     {
-        await VerifyElementVisibleAndEnable(selector);
-        await GetLocator(selector).FillAsync(string.Empty);
+        await IsElementReadyForInteraction(locator);
+        await locator.FillAsync(string.Empty);
         await WaitForNetworkIdle();
-        Log.Information($"Cleared content of element: {selector}");
+        Log.Information($"Cleared content of element: {locator}");
     }
 
-    protected async Task Input(string selector, string text)
+    protected async Task Input(ILocator locator, string text)
     {
         try
         {
-            await WaitForNetworkIdle();
-            if (await VerifyElementVisibleAndEnable(selector))
+            if (await IsElementReadyForInteraction(locator))
             {
-                await GetLocator(selector).ClickAsync();
-                await GetLocator(selector).ClearAsync();
-                await GetLocator(selector).FillAsync(text);
-
-                await GetLocator(selector).WaitForAsync(new LocatorWaitForOptions
-                    { State = WaitForSelectorState.Visible, Timeout = 15000 });
-
+                await locator.ClickAsync();
+                await locator.ClearAsync();
+                await locator.FillAsync(text);
                 await WaitForNetworkIdle();
-                Log.Information($"Filled text '{text}' into element: {selector}");
+                Log.Information($"Filled text '{text}' into element: {locator}");
             }
         }
         catch (PlaywrightException ex)
         {
-            Log.Error($"Failed to fill text '{text}' into element with selector '{selector}': {ex.Message}");
+            Log.Error($"Failed to fill text '{text}' into element with locator '{locator}': {ex.Message}");
             throw;
         }
     }
 
-    protected async Task InputByKeyboard(string selector, string text)
+    protected async Task InputByKeyboard(ILocator locator, string text)
     {
-        await VerifyElementVisibleAndEnable(selector);
-        await Click(selector);
+        await WaitForLocatorToExistAsync(locator);
+        await Click(locator);
         await Page.Keyboard.TypeAsync(text, new KeyboardTypeOptions { Delay = 50 });
         await WaitForNetworkIdle();
-        Log.Information($"Inputted text by keyboard '{text}' into element: {selector}");
-    }
-
-    public async Task ScrollToElement(string selector)
-    {
-        var elementHandle = await Page.QuerySelectorAsync(selector);
-        if (elementHandle != null)
-        {
-            var boundingBox = await elementHandle.BoundingBoxAsync();
-
-            if (boundingBox != null)
-            {
-                var x = boundingBox.X + boundingBox.Width / 2;
-                var y = boundingBox.Y + boundingBox.Height / 2;
-
-                await Page.Mouse.MoveAsync(x, y);
-            }
-        }
+        Log.Information($"Inputted text by keyboard '{text}' into element: {locator}");
     }
 
     protected async Task GoBack()
@@ -270,46 +226,12 @@ public abstract class BasePage(IPage page)
         }
     }
 
-    protected async Task<bool> WaitForSelectorToExistAsync(string selector, bool expectToExist = true)
-    {
-        await WaitForNetworkIdle();
-        await WaitForDomContentLoaded();
-
-        try
-        {
-            var elementHandle = await Page.WaitForSelectorAsync(selector, new PageWaitForSelectorOptions
-            {
-                /*State = expectToExist ? WaitForSelectorState.Attached : WaitForSelectorState.Detached,*/
-                Timeout = expectToExist ? 20000 : 5000
-            });
-
-            if (elementHandle != null && expectToExist)
-            {
-                Log.Information($"Element with selector '{selector}' is visible on the page.");
-                return true;
-            }
-            else if (elementHandle == null && !expectToExist)
-            {
-                Log.Information($"Confirmed absence of element with selector '{selector}'.");
-                return true;
-            }
-        }
-        catch (TimeoutException ex)
-        {
-            Log.Information(
-                $"Element with selector '{selector}' not found or not visible within the specified timeout. Exception: {ex.Message}");
-            return false;
-        }
-
-        return false;
-    }
-
-    public async Task<string> GetTextByXPathAsync(string xpath)
+    protected async Task<string> GetTextByXPathAsync(ILocator xpath)
     {
         try
         {
-            await VerifyElementVisibleAndEnable(xpath);
-            var element = await GetLocator(xpath).ElementHandleAsync();
+            await IsElementReadyForInteraction(xpath);
+            var element = await xpath.ElementHandleAsync();
 
             var text = await element.InnerTextAsync();
             Log.Information($"Successfully retrieved text from XPath '{xpath}': '{text}'");
@@ -322,41 +244,79 @@ public abstract class BasePage(IPage page)
         }
     }
 
-    protected async Task<bool> WaitForTextPresence(string text)
+    protected async Task ClickEnterByKeyboard()
     {
-        var stopwatch = Stopwatch.StartNew();
+        await Page.Keyboard.PressAsync("Enter");
+        Log.Information("Clicked 'Enter' button by keyword");
+        await WaitForNetworkIdle();
+    }
+
+    protected async Task<bool> ClickSaveShortcutByKeyboard(ILocator? successSelector = null)
+    {
         try
         {
-            await Page.WaitForSelectorAsync($"text=\"{text}\"", new PageWaitForSelectorOptions { Timeout = 20000 });
-            stopwatch.Stop();
-            Log.Information($"Text: '{text}' found. Condition met after {stopwatch.ElapsedMilliseconds}ms.");
+            await Page.Keyboard.PressAsync("Control+s");
+            Log.Information("Pressed 'Save' shortcut (Ctrl+S) on the keyboard.");
+
+            await WaitForNetworkIdle();
+
+            if (successSelector != null) await WaitForLocatorToExistAsync(successSelector);
+            Log.Information("Save shortcut action completed successfully.");
             return true;
         }
-        catch (TimeoutException)
+        catch (TimeoutException ex)
         {
-            stopwatch.Stop();
-            Log.Information(
-                $"Text: '{text}' not found within the timeout period of {stopwatch.ElapsedMilliseconds}ms.");
+            Log.Error($"Save shortcut action failed to confirm success within timeout: {ex.Message}");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Unexpected error during 'Save' shortcut action: {ex.Message}");
             return false;
         }
     }
 
-    protected async Task<bool> WaitForTextAbsence(string text)
+    protected internal async Task ClickEscapeByKeyboard()
     {
-        var stopwatch = Stopwatch.StartNew();
+        await Page.Keyboard.PressAsync("Escape");
+        Log.Information("Clicked 'Escape' button by keyword");
+        await WaitForNetworkIdle();
+    }
+
+    protected internal async Task RefreshPage()
+    {
+        await Page.ReloadAsync();
+        Log.Information("Page Refreshed");
+        await WaitForNetworkIdle();
+    }
+
+    public async Task<bool> WaitForLocatorToExistAsync(ILocator locator, bool expectToExist = true,
+        int timeoutMs = 15000)
+    {
         try
         {
-            await Page.Locator($"text=\"{text}\"").WaitForAsync(new LocatorWaitForOptions
-                { State = WaitForSelectorState.Hidden, Timeout = 5000 });
-            stopwatch.Stop();
-            Log.Information(
-                $"Text: '{text}' is not present on the page. Condition met after {stopwatch.ElapsedMilliseconds}ms.");
+            var state = expectToExist ? WaitForSelectorState.Visible : WaitForSelectorState.Detached;
+
+            await locator.WaitForAsync(new LocatorWaitForOptions
+            {
+                State = state,
+                Timeout = timeoutMs
+            });
+
+            Log.Information(expectToExist
+                ? $"Locator {locator} became visible within {timeoutMs}ms."
+                : $"Locator {locator} is absent/detached within {timeoutMs}ms.");
+
             return true;
         }
-        catch (TimeoutException)
+        catch (TimeoutException ex)
         {
-            stopwatch.Stop();
-            Log.Information($"Text: '{text}' still present after waiting {stopwatch.ElapsedMilliseconds}ms.");
+            Log.Warning($"Timeout waiting for locator {(expectToExist ? "to appear" : "to disappear")} - {ex.Message}");
+            return false;
+        }
+        catch (PlaywrightException ex)
+        {
+            Log.Error($"Playwright error while waiting for locator: {ex.Message}");
             return false;
         }
     }

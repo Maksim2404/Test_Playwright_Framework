@@ -1,0 +1,5 @@
+https://localhost {
+    root * ./allure-reports
+    file_server
+    tls internal
+}

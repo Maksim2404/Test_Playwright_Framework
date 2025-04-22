@@ -12,85 +12,6 @@ public class TestLifeCycleManager(BrowserManager browserManager, AtfConfig atfCo
     private IBrowserContext _browserContext = null!;
     private AtfConfig _atfConfig = atfConfig;
 
-    private ILocator GetLocator(string selector)
-    {
-        return selector.StartsWith("xpath=") ? Page.Locator(selector[6..]) : Page.Locator(selector);
-    }
-
-    private async Task WaitForNetworkIdle()
-    {
-        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 15000 });
-        Log.Information("Page reached 'NetworkIdle' state");
-    }
-
-    private async Task WaitForDomContentLoaded()
-    {
-        await Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded,
-            new PageWaitForLoadStateOptions { Timeout = 15000 });
-    }
-
-    private async Task<bool> VerifyElementVisibleAndEnable(string selector)
-    {
-        try
-        {
-            var locator = GetLocator(selector);
-            await Page.WaitForSelectorAsync(selector, new PageWaitForSelectorOptions { Timeout = 15000 });
-            await locator.WaitForAsync(new LocatorWaitForOptions
-                { State = WaitForSelectorState.Visible, Timeout = 15000 });
-
-            var isVisible = await Page.Locator(selector).IsVisibleAsync();
-            var isEnabled = await Page.Locator(selector).IsEnabledAsync();
-            return isVisible && isEnabled;
-        }
-        catch (PlaywrightException ex)
-        {
-            Log.Error($"Failed to verify if element with selector '{selector}' is visible and enabled: {ex.Message}");
-        }
-
-        return false;
-    }
-
-    private async Task<bool> WaitForSelectorToExistAsync(string selector, bool expectToExist = true)
-    {
-        await WaitForNetworkIdle();
-        await WaitForDomContentLoaded();
-
-        try
-        {
-            var elementHandle = await Page.WaitForSelectorAsync(selector, new PageWaitForSelectorOptions
-            {
-                State = expectToExist ? WaitForSelectorState.Attached : WaitForSelectorState.Detached,
-                Timeout = expectToExist ? 20000 : 1000
-            });
-
-            if (elementHandle != null && expectToExist)
-            {
-                Log.Information($"Element with selector '{selector}' is visible on the page.");
-                return true;
-            }
-            else if (elementHandle == null && !expectToExist)
-            {
-                Log.Information($"Confirmed absence of element with selector '{selector}'.");
-                return true;
-            }
-        }
-        catch (TimeoutException ex)
-        {
-            Log.Information(
-                $"Element with selector '{selector}' not found or not visible within the specified timeout. Exception: {ex.Message}");
-            return false;
-        }
-
-        return false;
-    }
-
-    private async Task<string> GetTitle()
-    {
-        var title = await Page.TitleAsync();
-        Log.Information($"Page title retrieved: {title}");
-        return title;
-    }
-
     private async Task OpenBaseUrl()
     {
         if (_atfConfig.AppUrl != null)
@@ -101,8 +22,13 @@ public class TestLifeCycleManager(BrowserManager browserManager, AtfConfig atfCo
     {
         try
         {
+            Log.Information("Initializing Playwright...");
             await browserManager.InitializePlaywrightAsync();
+
+            Log.Information("Creating browser context...");
             _browserContext = await browserManager.CreateIsolatedBrowserContextAsync();
+
+            Log.Information("Creating new page...");
             Page = await browserManager.CreateNewPageAsync(_browserContext);
 
             Stopwatch.StartNew();
@@ -124,5 +50,18 @@ public class TestLifeCycleManager(BrowserManager browserManager, AtfConfig atfCo
     {
         await _browserContext.CloseAsync();
         await browserManager.CloseBrowserAsync();
+    }
+
+    public async Task SimulateOfflineModeAsync(bool isOffline)
+    {
+        Log.Information("Setting browser offline mode to: {OfflineState}", isOffline ? "ON" : "OFF");
+        await browserManager.SetOfflineModeAsync(_browserContext, isOffline);
+
+        Log.Information("Browser offline mode is now set to: {State}", isOffline ? "Offline" : "Online");
+    }
+
+    public async Task SimulateNetworkThrottlingAsync(string networkType)
+    {
+        await browserManager.SimulateNetworkThrottlingAsync(_browserContext, networkType);
     }
 }
