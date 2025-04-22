@@ -6,9 +6,9 @@ namespace test.playwright.framework.dataDrivenTests.pages;
 
 public class LoginPage(IPage page) : BaseProjectElements(page)
 {
-    private const string UsernameField = "//form//following-sibling::input[@id='username']";
-    private const string PasswordField = "//form//following-sibling::input[@id='password']";
-    private const string LoginButton = "//form//following-sibling::button[@type='submit'][text()='Sign in']";
+    private ILocator UsernameField => Page.Locator("//form//following-sibling::input[@id='username']");
+    private ILocator PasswordField => Page.Locator("//form//following-sibling::input[@id='password']");
+    private ILocator LoginButton => Page.Locator("//form//following-sibling::button[@type='submit'][text()='Sign in']");
 
     /// <summary>
     /// Logs in with the provided credentials.
@@ -19,13 +19,13 @@ public class LoginPage(IPage page) : BaseProjectElements(page)
     {
         try
         {
-            await VerifyElementVisibleAndEnable(UsernameField);
+            await IsElementReadyForInteraction(UsernameField);
             await Input(UsernameField, email);
 
-            await VerifyElementVisibleAndEnable(PasswordField);
+            await IsElementReadyForInteraction(PasswordField);
             await Input(PasswordField, password);
 
-            await VerifyElementVisibleAndEnable(LoginButton);
+            await IsElementReadyForInteraction(LoginButton);
             await Click(LoginButton);
 
             await WaitForNetworkIdle();

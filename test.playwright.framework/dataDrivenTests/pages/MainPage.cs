@@ -14,9 +14,9 @@ public class MainPage(IPage page) : BaseProjectElements(page)
     {
         try
         {
-            var sectionSelector = $"//nav//a[text()='{sectionName}']";
-            await WaitForSelectorToExistAsync(sectionSelector);
-            await Click(sectionSelector);
+            var sectionLocator = Page.Locator($"//nav//a[text()='{sectionName}']");
+            await WaitForLocatorToExistAsync(sectionLocator);
+            await Click(sectionLocator);
             await WaitForNetworkIdle();
             Log.Information($"Navigated to section: {sectionName}");
         }
@@ -40,9 +40,10 @@ public class MainPage(IPage page) : BaseProjectElements(page)
         {
             var columnSelector =
                 $"//div[contains(@class, 'column')]//h2[text()='{columnName}']/../div[contains(@class, 'task-list')]";
-            var taskCardSelector = $"{columnSelector}//div[contains(@class, 'task') and .//text()='{taskTitle}']";
+            var taskCardSelector =
+                Page.Locator($"{columnSelector}//div[contains(@class, 'task') and .//text()='{taskTitle}']");
 
-            if (!await WaitForSelectorToExistAsync(taskCardSelector))
+            if (!await WaitForLocatorToExistAsync(taskCardSelector))
             {
                 Log.Warning($"Task '{taskTitle}' not found in column '{columnName}'.");
                 return false;
@@ -50,8 +51,8 @@ public class MainPage(IPage page) : BaseProjectElements(page)
 
             foreach (var tag in tags)
             {
-                var tagSelector = $"{taskCardSelector}//span[contains(@class, 'tag') and text()='{tag}']";
-                if (!await WaitForSelectorToExistAsync(tagSelector))
+                var tagSelector = Page.Locator($"{taskCardSelector}//span[contains(@class, 'tag') and text()='{tag}']");
+                if (!await WaitForLocatorToExistAsync(tagSelector))
                 {
                     Log.Warning($"Tag '{tag}' not found for task '{taskTitle}' in column '{columnName}'.");
                     return false;
