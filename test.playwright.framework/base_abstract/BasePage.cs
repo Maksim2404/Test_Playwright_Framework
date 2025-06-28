@@ -290,33 +290,53 @@ public abstract class BasePage(IPage page)
         await WaitForNetworkIdle();
     }
 
-    public async Task<bool> WaitForLocatorToExistAsync(ILocator locator, bool expectToExist = true,
-        int timeoutMs = 15000)
+    public async Task<bool> WaitForLocatorToExistAsync(ILocator locator, int timeoutMs = 15000)
     {
         try
         {
-            var state = expectToExist ? WaitForSelectorState.Visible : WaitForSelectorState.Detached;
-
             await locator.WaitForAsync(new LocatorWaitForOptions
             {
-                State = state,
+                State = WaitForSelectorState.Visible,
                 Timeout = timeoutMs
             });
 
-            Log.Information(expectToExist
-                ? $"Locator {locator} became visible within {timeoutMs}ms."
-                : $"Locator {locator} is absent/detached within {timeoutMs}ms.");
-
+            Log.Information($"Locator {locator} became visible within {timeoutMs}ms.");
             return true;
         }
         catch (TimeoutException ex)
         {
-            Log.Warning($"Timeout waiting for locator {(expectToExist ? "to appear" : "to disappear")} - {ex.Message}");
+            Log.Warning($"Timeout waiting for locator to appear - {ex.Message}");
             return false;
         }
         catch (PlaywrightException ex)
         {
             Log.Error($"Playwright error while waiting for locator: {ex.Message}");
+            return false;
+        }
+    }
+
+    protected async Task<bool> WaitUntilAbsentAsync(ILocator locator, int timeoutMs = 5_000)
+    {
+        try
+        {
+            await Task.WhenAny(
+                locator.WaitForAsync(new LocatorWaitForOptions
+                {
+                    State = WaitForSelectorState.Detached,
+                    Timeout = timeoutMs
+                }),
+                locator.WaitForAsync(new LocatorWaitForOptions
+                {
+                    State = WaitForSelectorState.Hidden,
+                    Timeout = timeoutMs
+                })
+            );
+
+            return await locator.CountAsync() == 0;
+        }
+        catch (TimeoutException)
+        {
+            Log.Error("Locator still present after timeout.");
             return false;
         }
     }

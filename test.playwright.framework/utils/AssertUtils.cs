@@ -223,4 +223,58 @@ public class AssertUtils(IPage page) : BasePage(page)
         Log.Information("Searched data isn't present on the page and search functionality works as expected");
         return true;
     }
+
+    private static string Pretty(object value) => value switch
+    {
+        IEnumerable<string> list when value is not string =>
+            string.Join(", ", list),
+
+        null => "«null»",
+        _ => value.ToString()!
+    };
+
+    private static string Normalise(string s) => Regex.Replace(s, @"\s+", " ").Trim();
+
+    protected async Task<bool> VerifyTableDetailsAsync(Dictionary<string, object> expectedDetails, string tableName)
+    {
+        var mismatches = new List<string>();
+        foreach (var (key, expectedValue) in expectedDetails)
+        {
+            var cell = Page.Locator($"//tr[td[1][normalize-space(text())='{key}']]/td[2]");
+
+            if (!await WaitForLocatorToExistAsync(cell))
+            {
+                mismatches.Add($"Row “{key}” not found");
+                continue;
+            }
+
+            var cellText = (await cell.InnerTextAsync())?.Trim() ?? string.Empty;
+
+            var match = expectedValue switch
+            {
+                string s => Normalise(cellText).Equals(Normalise(s), StringComparison.OrdinalIgnoreCase),
+
+                IEnumerable<string> list when expectedValue is not string =>
+                    list.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(
+                        (await cell.Locator("//div[contains(@class,'v-chip__content')]").AllInnerTextsAsync())
+                        .Select(t => t.Trim())
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase)),
+
+                _ => throw new InvalidOperationException(
+                    $"Unsupported expected‑value type ({expectedValue.GetType().Name}) for “{key}”.")
+            };
+
+            if (!match)
+                mismatches.Add($"Row “{key}”: expected “{Pretty(expectedValue)}”, got “{cellText}”.");
+        }
+
+        if (mismatches.Count == 0)
+        {
+            Log.Information($"All properties for “{tableName}” verified successfully.");
+            return true;
+        }
+
+        mismatches.ForEach(Log.Warning);
+        return false;
+    }
 }

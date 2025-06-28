@@ -13,6 +13,7 @@ public class BaseProjectElements(IPage page) : AssertUtils(page)
     private ILocator SaveButton => Page.Locator("button[data-test='saveButton']");
     private ILocator NextPageButton => Page.Locator("//button[@aria-label='Next page']");
     private ILocator PreviousPageButton => Page.Locator("//button[@aria-label='Previous page']");
+    private ILocator FileInputSelector => Page.Locator("//div[@class='uppy-Dashboard-AddFiles']//input[1]");
     private ILocator ClickCustomButton(string buttonText) => Page.Locator($"//button[text()='{buttonText}']");
 
     protected internal readonly Dictionary<string, string> LanguageCodes = new()
@@ -22,7 +23,7 @@ public class BaseProjectElements(IPage page) : AssertUtils(page)
         { "Azeri", "AZ" },
         { "English", "EN" }
     };
-    
+
     protected async Task<T> ClickSaveButton<T>() where T : BaseProjectElements
     {
         await Click(SaveButton);
@@ -42,22 +43,30 @@ public class BaseProjectElements(IPage page) : AssertUtils(page)
         await Input(inputSelector, text);
         return (T)Activator.CreateInstance(typeof(T), Page)!;
     }
+    
+    protected static string GetCurrentDate()
+    {
+        return DateTime.Now.ToString("MMM d, yyyy");
+    }
 
-    public async Task UploadFileAsync(string selectFilesField)
+    public async Task UploadFileAsync(params string[] fileNames)
     {
         try
         {
-            var filePath = Path.Combine(Directory.GetCurrentDirectory(), TestDataConstants.FilesToUploadDirectory,
-                TestDataConstants.FileNameToUpload);
+            var filePaths = fileNames.Select(fileName =>
+                    Path.Combine(Directory.GetCurrentDirectory(), TestDataConstants.FilesToUploadDirectory, fileName))
+                .ToArray();
 
-            Log.Information($"Attempting to upload file: {filePath} using selector: {selectFilesField}");
-            await Page.SetInputFilesAsync(selectFilesField, filePath);
-            Log.Information($"File upload attempted for: {TestDataConstants.FileNameToUpload}");
+            Log.Information(
+                $"Attempting to upload files: {string.Join(", ", filePaths)} using selector: {FileInputSelector}");
+
+            await FileInputSelector.SetInputFilesAsync(filePaths);
+            Log.Information($"File upload attempted for: {string.Join(", ", fileNames)}");
         }
         catch (Exception ex)
         {
             Log.Error(
-                $"An error occurred while attempting to upload file: {TestDataConstants.FileNameToUpload}. Error: {ex.Message}");
+                $"An error occurred while attempting to upload files: {string.Join(", ", fileNames)}. Error: {ex.Message}");
             throw;
         }
     }
@@ -134,43 +143,24 @@ public class BaseProjectElements(IPage page) : AssertUtils(page)
         return true;
     }
 
-    protected async Task<bool> ValidateSomeDetails(string name, string workType, string customer,
+    protected async Task<bool> ValidateSomeDetails(string templateName, string workType, string customer,
         string? language = null)
     {
-        var expectedDetails = new Dictionary<string, string>
+        var expectedDetails = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
         {
-            { "Name", name },
+            { "Name", templateName },
             { "Work Type", workType },
             { "Customer", customer }
         };
 
-        if (!string.IsNullOrEmpty(language))
+        if (!string.IsNullOrEmpty(language) && LanguageCodes.ContainsKey(language))
         {
-            expectedDetails.Add("Language", language);
+            expectedDetails.Add("Language", $"{LanguageCodes[language]} {language}");
         }
 
-        foreach (var detail in expectedDetails)
-        {
-            var expectedValue = detail.Value;
-
-            if (detail.Key == "Language" && language != null && LanguageCodes.ContainsKey(language))
-            {
-                expectedValue = $"{LanguageCodes[language]} {language}";
-            }
-
-            var xpath = $"//tr[td[1][normalize-space(text())='{detail.Key}']]/td[2]";
-            var valueLocator = Page.Locator(xpath);
-            await WaitForLocatorToExistAsync(valueLocator);
-            var actualValue = await valueLocator.TextContentAsync() ?? string.Empty;
-
-            if (actualValue.Trim().Equals(expectedValue)) continue;
-            Log.Warning($"Mismatch found: {detail.Key} - Expected: {expectedValue}, Actual: {actualValue}");
-        }
-
-        Log.Information($"All template properties verified successfully for '{name}'.");
-        return true;
+        return await VerifyTableDetailsAsync(expectedDetails, templateName);
     }
-    
+
     protected async Task<UiActionState> GetEllipsisMenuItemStateAsync(ILocator item, string disabledClass)
     {
         if (!await WaitForLocatorToExistAsync(item))

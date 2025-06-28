@@ -27,7 +27,7 @@ public class DiagnosticManager : IDiagnosticManager
         Directory.CreateDirectory(_screenshotPath);
         Log.Information($"Created directory for screenshots: {_screenshotPath}");
     }
-    
+
     public async Task<byte[]> CaptureScreenshotBufferAsync(IPage page)
     {
         try
@@ -198,6 +198,32 @@ public class DiagnosticManager : IDiagnosticManager
         {
             Log.Error($"Error comparing images: {ex.Message}");
             return false;
+        }
+    }
+
+    public static async Task CaptureTotpScreenshotAsync(IPage page, bool includeTimestamp = false)
+    {
+        try
+        {
+            var timestamp = includeTimestamp ? $"_{DateTime.Now:yyyyMMdd_HHmmss}" : string.Empty;
+            const string screenshotDirectory = "totpFailedLoginScreenshots";
+            Directory.CreateDirectory(screenshotDirectory);
+            {
+                var screenshotFilePath = Path.Combine(screenshotDirectory, $"totp_failed {timestamp}.png");
+
+                await page.ScreenshotAsync(new PageScreenshotOptions
+                {
+                    Path = screenshotFilePath,
+                    FullPage = true
+                });
+
+                Log.Information($"Screenshot captured at: {screenshotFilePath}");
+                TestContext.AddTestAttachment(screenshotFilePath, "Screenshot on error");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Failed to capture screenshot: {ex.Message}");
         }
     }
 }

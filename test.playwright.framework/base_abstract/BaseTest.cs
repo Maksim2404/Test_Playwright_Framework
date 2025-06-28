@@ -6,6 +6,7 @@ using Newtonsoft.Json;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
 using Serilog;
+using test.playwright.framework.auth;
 using test.playwright.framework.config;
 using test.playwright.framework.security.sql;
 using test.playwright.framework.security.xss;
@@ -19,6 +20,7 @@ public abstract class BaseTest
     private readonly TestMetricsManager _testMetricsManager;
     protected internal readonly IDiagnosticManager DiagnosticManager;
     protected internal readonly TestLifeCycleManager TestLifeCycleManager;
+    protected internal readonly AuthManager AuthManager;
     protected IPage Page => TestLifeCycleManager.Page;
     private Stopwatch? _stopwatch;
     private DateTime _testStartTime;
@@ -38,20 +40,6 @@ public abstract class BaseTest
         Log.Information($"Test finished at: {DateTime.Now}");
 
         if (_testStopwatch != null) Log.Information($"Test execution time: {_testStopwatch.Elapsed}");
-    }
-
-    private async void OnDialogHandled(object? sender, IDialog dialog)
-    {
-        Log.Information($"Dialog triggered with message: '{dialog.Message}'");
-        if (DefaultDialogAction.Equals("Accept", StringComparison.OrdinalIgnoreCase))
-        {
-            await dialog.AcceptAsync();
-            Log.Information("Dialog accepted automatically.");
-        }
-        else
-        {
-            await dialog.DismissAsync();
-        }
     }
 
     protected void UpdateGlobalXssReport(XssTestReport xssReport)
@@ -74,9 +62,12 @@ public abstract class BaseTest
 
     protected BaseTest()
     {
-        var browserManager = new BrowserManager();
         Config = AtfConfig.ReadConfig();
-        TestLifeCycleManager = new TestLifeCycleManager(browserManager, Config);
+        var browserManager = new BrowserManager();
+        var lifeCycle = new TestLifeCycleManager(browserManager, Config);
+        Contracts.IProfileProvider profiles = Config;
+        AuthManager = new AuthManager(profiles, Config);
+        TestLifeCycleManager = lifeCycle;
         _testMetricsManager = new TestMetricsManager();
         DiagnosticManager = new DiagnosticManager(Config);
         Allure = AllureLifecycle.Instance;
@@ -95,6 +86,20 @@ public abstract class BaseTest
         _testStartTime = DateTime.Now;
         Log.Information($"Test Suite Started {_testStartTime}");
         _testMetricsManager.TestCompleted += outcome => Log.Information($"Test outcome: {outcome}");
+    }
+
+    private async void OnDialogHandled(object? sender, IDialog dialog)
+    {
+        Log.Information($"Dialog triggered with message: '{dialog.Message}'");
+        if (DefaultDialogAction.Equals("Accept", StringComparison.OrdinalIgnoreCase))
+        {
+            await dialog.AcceptAsync();
+            Log.Information("Dialog accepted automatically.");
+        }
+        else
+        {
+            await dialog.DismissAsync();
+        }
     }
 
     [SetUp]

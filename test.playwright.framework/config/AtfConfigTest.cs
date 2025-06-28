@@ -6,10 +6,22 @@ namespace test.playwright.framework.config;
 public class AtfConfigTest
 {
     [Test]
-    public void CanReadConfigFile()
+    public void CanReadConfig()
     {
         var appConfig = AtfConfig.ReadConfig();
-        appConfig.AppUrl.Should().NotBeNullOrWhiteSpace();
+
+        appConfig.AppUrl.Should().NotBeNullOrWhiteSpace()
+            .And.StartWith("https://")
+            .And.EndWith("/");
+
+        appConfig.UserProfiles.Should().NotBeEmpty();
+        foreach (var userProfile in appConfig.UserProfiles)
+        {
+            userProfile.Name.Should().NotBeNullOrWhiteSpace();
+            userProfile.UserName.Should().NotBeNullOrWhiteSpace();
+            userProfile.Password.Should().NotBeNullOrWhiteSpace();
+        }
+
         appConfig.ScreenshotPath.Should().NotBeNullOrWhiteSpace();
     }
 }

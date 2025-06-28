@@ -1,12 +1,18 @@
 ﻿using Microsoft.Extensions.Configuration;
+using NUnit.Framework;
+using test.playwright.framework.auth;
 using test.playwright.framework.base_abstract;
 
 namespace test.playwright.framework.config;
 
-public class AtfConfig
+public sealed class AtfConfig : Contracts.IProfileProvider
 {
-    public string? AppUrl { get; set; }
+    public required string AppUrl { get; set; } = null!;
+    public required List<UserProfiles> UserProfiles { get; init; } = [];
     public string? ScreenshotPath { get; private set; }
+
+    public UserProfiles GetByName(string name) =>
+        UserProfiles.First(u => u.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
     public static AtfConfig ReadConfig()
     {
@@ -15,9 +21,30 @@ public class AtfConfig
             .AddEnvironmentVariables()
             .Build();
 
-        var atfConfig = config.GetRequiredSection("test:playwright").Get<AtfConfig>();
-        atfConfig!.ScreenshotPath = config["test:playwright:ScreenshotPath"];
+        //when you need to switch between dev and qa envs: change the value inside "qa" to "dev"
 
+        var envFromRun = TestContext.Parameters.Get("env");
+        var envVar = config["TEST_ENV"];
+        var env = (TestEnv.Override ?? envFromRun ?? envVar ?? "qa").Trim().ToLowerInvariant();
+        var url = config[$"test:playwright:Urls:{env}"]
+                  ?? throw new InvalidOperationException($"No URL configured for env '{env}'");
+
+        ValidateUrl(url);
+
+        var atfConfig = config.GetRequiredSection("test:playwright").Get<AtfConfig>()!;
+        atfConfig.AppUrl = url.TrimEnd('/') + '/';
+        atfConfig.ScreenshotPath = config["test:playwright:ScreenshotPath"];
         return atfConfig;
+    }
+
+    private static void ValidateUrl(string url)
+    {
+        if (!url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Only HTTPS base‑urls are allowed");
+    }
+
+    public static class TestEnv
+    {
+        public static string? Override;
     }
 }

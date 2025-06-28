@@ -31,13 +31,19 @@ public class BrowserManager
         };
     }
 
+    public async Task CloseBrowserAsync()
+    {
+        await _browser.CloseAsync();
+        _playwright.Dispose();
+    }
+
     public async Task<IBrowserContext> CreateIsolatedBrowserContextAsync()
     {
         var browserContext = await _browser.NewContextAsync(new BrowserNewContextOptions
         {
             ViewportSize = new ViewportSize { Width = 1920, Height = 1080 },
             IgnoreHTTPSErrors = true,
-            RecordVideoDir = "videos/",
+            /*RecordVideoDir = "videos/",*/
         });
 
         return browserContext;
@@ -49,28 +55,6 @@ public class BrowserManager
         AddNetworkEventListeners(page);
         return page;
     }
-
-    public async Task CloseBrowserAsync()
-    {
-        await _browser.CloseAsync();
-        _playwright.Dispose();
-    }
-
-    private void AddNetworkEventListeners(IPage page)
-    {
-        page.Request += OnRequest;
-        page.Response += OnResponse;
-        page.RequestFailed += OnRequestFailed;
-    }
-
-    private void OnRequest(object? sender, IRequest request) =>
-        _networkLogger.Information($"[Request] Method: {request.Method}, URL: {request.Url}");
-
-    private void OnResponse(object? sender, IResponse response) =>
-        _networkLogger.Information($"[Response] Status: {response.Status}, URL: {response.Url}");
-
-    private void OnRequestFailed(object? sender, IRequest request) =>
-        _networkLogger.Error($"[Request Failed] URL: {request.Url}");
 
     private static string GetBrowserType()
     {
@@ -88,6 +72,22 @@ public class BrowserManager
             _ => BrowserType.Chromium,
         };
     }
+
+    private void AddNetworkEventListeners(IPage page)
+    {
+        page.Request += OnRequest;
+        page.Response += OnResponse;
+        page.RequestFailed += OnRequestFailed;
+    }
+
+    private void OnRequest(object? sender, IRequest request) =>
+        _networkLogger.Information($"[Request] Method: {request.Method}, URL: {request.Url}");
+
+    private void OnResponse(object? sender, IResponse response) =>
+        _networkLogger.Information($"[Response] Status: {response.Status}, URL: {response.Url}");
+
+    private void OnRequestFailed(object? sender, IRequest request) =>
+        _networkLogger.Error($"[Request Failed] URL: {request.Url}");
 
     public async Task SimulateNetworkThrottlingAsync(IBrowserContext context, string networkType)
     {
