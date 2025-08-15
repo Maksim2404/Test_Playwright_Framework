@@ -43,7 +43,7 @@ public class BaseProjectElements(IPage page) : AssertUtils(page)
         await Input(inputSelector, text);
         return (T)Activator.CreateInstance(typeof(T), Page)!;
     }
-    
+
     protected static string GetCurrentDate()
     {
         return DateTime.Now.ToString("MMM d, yyyy");
@@ -158,7 +158,7 @@ public class BaseProjectElements(IPage page) : AssertUtils(page)
             expectedDetails.Add("Language", $"{LanguageCodes[language]} {language}");
         }
 
-        return await VerifyTableDetailsAsync(expectedDetails, templateName);
+        return await VerifyTableDetailsAsync(Page, expectedDetails, templateName);
     }
 
     protected async Task<UiActionState> GetEllipsisMenuItemStateAsync(ILocator item, string disabledClass)

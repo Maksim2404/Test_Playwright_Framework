@@ -2,35 +2,50 @@
 using Microsoft.Playwright;
 using Serilog;
 using test.playwright.framework.base_abstract;
+using test.playwright.framework.pages.enums;
 
 namespace test.playwright.framework.utils;
 
-public class AssertUtils(IPage page) : BasePage(page)
+public partial class AssertUtils(IPage page) : BasePage(page)
 {
-    private const string NoDataSelector = "//tr[@class='v-data-table__empty-wrapper']//td";
     private ILocator EllipsisMenuList => Page.Locator("//div[@class='v-overlay__content']//div[@role='listbox']");
+    private ILocator TaskLabelLocator => Page.Locator("//div[@class='task-node-content']/p");
 
-    private static readonly Dictionary<string, List<string>> EllipsisMenuExpectations = new()
-    {
+    private static readonly IReadOnlyDictionary<EllipsisEntity, IReadOnlyList<string>> EllipsisMenuExpectations =
+        new Dictionary<EllipsisEntity, IReadOnlyList<string>>
         {
-            "Project",
+            [EllipsisEntity.Project] =
             [
                 "View Project",
                 "Edit Project",
                 "Manage Languages",
                 "Delete Project"
+            ],
+            [EllipsisEntity.Template] =
+            [
+                "Edit Template",
+                "Manage Template",
+                "Clone Template",
+                "Delete Template"
+            ],
+            [EllipsisEntity.User] =
+            [
+                "Edit User",
+                "View Assigned Tasks",
+                "Manage Notifications",
+                "Delete Mapping"
             ]
-        }
-    };
+        };
+
+    [GeneratedRegex(@"^\d+(?<taskType>.+)$", RegexOptions.Compiled | RegexOptions.Singleline)]
+    private static partial Regex MyRegex();
 
     private async Task<List<string>> GetEllipsisMenuOptions()
     {
         await WaitForLocatorToExistAsync(EllipsisMenuList);
-
         var menuItems = EllipsisMenuList.Locator("div.v-list-item-title");
         var count = await menuItems.CountAsync();
         var texts = new List<string>();
-
         for (var i = 0; i < count; i++)
         {
             var text = await menuItems.Nth(i).InnerTextAsync();
@@ -40,70 +55,65 @@ public class AssertUtils(IPage page) : BasePage(page)
         return texts;
     }
 
-    public async Task<bool> VerifyEllipsisMenu(string entityType)
+    public async Task<bool> VerifyEllipsisMenu(EllipsisEntity entityType)
     {
         var expectedItems = EllipsisMenuExpectations[entityType];
         var actualItems = await GetEllipsisMenuOptions();
 
         if (actualItems.Count != expectedItems.Count)
         {
-            Log.Error($"Menu count mismatch for {entityType}: " +
-                      $"Expected {expectedItems.Count}, got {actualItems.Count}");
+            Log.Error("Menu count mismatch for {Type}: expected {E}, got {A}", entityType, expectedItems.Count,
+                actualItems.Count);
             return false;
         }
 
         for (var i = 0; i < expectedItems.Count; i++)
         {
-            if (string.Equals(expectedItems[i], actualItems[i], StringComparison.OrdinalIgnoreCase)) continue;
-            Log.Error($"Menu item mismatch at index {i}. " +
-                      $"Expected '{expectedItems[i]}', got '{actualItems[i]}'.");
-            return false;
+            if (!string.Equals(expectedItems[i], actualItems[i], StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Error("Menu item mismatch at {Idx}: exp='{Exp}' got='{Got}'", i, expectedItems[i], actualItems[i]);
+                return false;
+            }
         }
 
-        Log.Information($"Ellipsis menu items for {entityType} matched perfectly.");
+        Log.Information("Ellipsis menu items matched for {Type}.", entityType);
         return true;
     }
 
-    protected async Task<bool> VerifyField(ILocator rowLocator, string xpath, string expectedValue,
-        bool partialMatch = false)
+    protected delegate bool FieldComparer(string actual, object expected);
+
+    protected static readonly FieldComparer Exact = (a, e) =>
+        string.Equals(a, e.ToString(), StringComparison.OrdinalIgnoreCase);
+
+    protected static readonly FieldComparer Contains = (a, e) =>
+        a.Contains(e.ToString() ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+    protected async Task<bool> VerifyFieldAsync(ILocator cell, object? expected, FieldComparer? comparer = null)
     {
-        var displayedValue = await rowLocator.Locator(xpath).TextContentAsync();
-        if (displayedValue == null)
+        var count = await cell.CountAsync();
+
+        bool ok;
+        if (count == 0)
         {
-            Log.Warning($"No text found for xpath: {xpath}");
-            return false;
+            ok = expected is null;
+            Log.Debug("Verify  <missing element>  vs  «{Expected}»  ⇒  {Ok}", expected, ok);
+            return ok;
         }
 
-        displayedValue = displayedValue.Trim();
-        if (!partialMatch)
+        var txt = (await cell.InnerTextAsync())?.Trim() ?? "";
+
+        if (expected is null)
         {
-            var isExact = displayedValue.Equals(expectedValue, StringComparison.Ordinal);
-            Log.Information($"Verifying field exact: Expected - '{expectedValue}', Actual - '{displayedValue}'");
-            return isExact;
+            ok = string.IsNullOrWhiteSpace(txt);
+            Log.Debug("Verify  «{Actual}»  is empty  ⇒  {Ok}", txt, ok);
         }
         else
         {
-            var contains = displayedValue.Contains(expectedValue, StringComparison.OrdinalIgnoreCase);
-            Log.Information(
-                $"Verifying field partial: Expected (substring) - '{expectedValue}', Actual - '{displayedValue}'");
-            return contains;
-        }
-    }
-
-    protected async Task<bool> VerifyFieldContainsText(ILocator rowLocator, string xpath, string expectedValue)
-    {
-        var displayedValue = await rowLocator.Locator(xpath).TextContentAsync();
-
-        if (displayedValue == null)
-        {
-            Log.Warning($"Displayed value is null for xpath: {xpath}");
-            return false;
+            ok = (comparer ?? Exact)(txt, expected);
+            Log.Debug("Verify  «{Actual}»  vs  «{Expected}»  ⇒  {Ok}", txt, expected, ok);
         }
 
-        var match = displayedValue.Trim().Contains(expectedValue, StringComparison.OrdinalIgnoreCase);
-        Log.Information(
-            $"Verifying field: Expected (substring) - {expectedValue}, Displayed - {displayedValue.Trim()}");
-        return match;
+        return ok;
     }
 
     protected async Task<ILocator> EnsureLocatorAsync(object selectorOrLocator)
@@ -127,16 +137,54 @@ public class AssertUtils(IPage page) : BasePage(page)
         return locator;
     }
 
-    private string RemoveLeadingDigits(string rawText)
+    private string StripTaskTypeLeadingDigits(string rawText)
     {
-        var match = Regex.Match(rawText, @"^\d+(?<someValue>.+)$");
+        var match = MyRegex().Match(rawText);
         if (match.Success)
         {
-            return match.Groups["someValue"].Value.Trim();
+            return match.Groups["taskType"].Value.Trim();
         }
 
         Log.Warning($"Task node has unexpected format: {rawText}");
         return string.Empty;
+    }
+
+    private async Task<IReadOnlyList<string>> GetDiagramTaskDetailsWithIdsAsync()
+    {
+        await TaskLabelLocator.ExpectVisibleCountAsync();
+        var rawLabels = await TaskLabelLocator.AllInnerTextsAsync();
+
+        var cleaned = rawLabels.Select((t, i) =>
+        {
+            var trimmed = t.Trim();
+            Log.Information("Node {Idx}: «{Text}»", i, trimmed);
+            return trimmed;
+        }).ToArray();
+
+        Log.Information("Found {Count} nodes in the diagram.", cleaned.Length);
+        return cleaned;
+    }
+
+    public async Task<bool> VerifyDiagramTaskDependencies(params TaskTypeKind[] expectedTaskTypes)
+    {
+        var actualTasks = await GetDiagramTaskDetailsWithIdsAsync();
+        var actual = actualTasks
+            .Select(StripTaskTypeLeadingDigits)
+            .Where(t => t.Length > 0)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var missing = expectedTaskTypes
+            .Where(e => !actual.Contains(e.ToUi()))
+            .ToArray();
+
+        if (missing.Length == 0)
+        {
+            Log.Information("All expected task types are present in the diagram.");
+            return true;
+        }
+
+        Log.Warning("Missing task types: {Missing}", string.Join(", ", missing));
+        return false;
     }
 
     private async Task<string> GetTextFromDiv(string title, string prefix)
@@ -150,7 +198,6 @@ public class AssertUtils(IPage page) : BasePage(page)
 
     protected async Task<bool> IsToggledOn(ILocator toggleLocator)
     {
-        await WaitForLocatorToExistAsync(toggleLocator);
         var isChecked = await toggleLocator.IsCheckedAsync();
         Log.Information($"Toggle checked state: {isChecked}");
         return isChecked;
@@ -162,13 +209,7 @@ public class AssertUtils(IPage page) : BasePage(page)
         try
         {
             var locator = await EnsureLocatorAsync(selectorOrLocator);
-
-            var count = await locator.CountAsync();
-            if (count == 0)
-            {
-                Log.Error($"Expected at least 1 match for locator, but found {count}.");
-                return false;
-            }
+            await locator.ExpectVisibleCountAsync();
 
             var text = await locator.TextContentAsync();
             if (string.IsNullOrWhiteSpace(text))
@@ -210,20 +251,6 @@ public class AssertUtils(IPage page) : BasePage(page)
         }
     }
 
-    public async Task<bool> VerifyNoDataFound(string text)
-    {
-        var noDataStatusDisplayed = await WaitAndVerifySingleElementText(text, NoDataSelector);
-
-        if (!noDataStatusDisplayed)
-        {
-            Log.Warning("Searched data present on the page.");
-            return false;
-        }
-
-        Log.Information("Searched data isn't present on the page and search functionality works as expected");
-        return true;
-    }
-
     private static string Pretty(object value) => value switch
     {
         IEnumerable<string> list when value is not string =>
@@ -235,12 +262,13 @@ public class AssertUtils(IPage page) : BasePage(page)
 
     private static string Normalise(string s) => Regex.Replace(s, @"\s+", " ").Trim();
 
-    protected async Task<bool> VerifyTableDetailsAsync(Dictionary<string, object> expectedDetails, string tableName)
+    protected async Task<bool> VerifyTableDetailsAsync(Func<string, ILocator> locatorProvider,
+        Dictionary<string, object> expectedDetails, string tableName)
     {
         var mismatches = new List<string>();
         foreach (var (key, expectedValue) in expectedDetails)
         {
-            var cell = Page.Locator($"//tr[td[1][normalize-space(text())='{key}']]/td[2]");
+            var cell = locatorProvider($"//tr[td[1][normalize-space(text())='{key}']]/td[2]");
 
             if (!await WaitForLocatorToExistAsync(cell))
             {
@@ -256,7 +284,7 @@ public class AssertUtils(IPage page) : BasePage(page)
 
                 IEnumerable<string> list when expectedValue is not string =>
                     list.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(
-                        (await cell.Locator("//div[contains(@class,'v-chip__content')]").AllInnerTextsAsync())
+                        (await cell.Locator("//span[contains(@class,'v-chip__content')]").AllInnerTextsAsync())
                         .Select(t => t.Trim())
                         .ToHashSet(StringComparer.OrdinalIgnoreCase)),
 
@@ -270,11 +298,17 @@ public class AssertUtils(IPage page) : BasePage(page)
 
         if (mismatches.Count == 0)
         {
-            Log.Information($"All properties for “{tableName}” verified successfully.");
+            Log.Information($"All properties for asset “{tableName}” verified successfully.");
             return true;
         }
 
         mismatches.ForEach(Log.Warning);
         return false;
     }
+
+    protected Task<bool> VerifyTableDetailsAsync(IPage root, Dictionary<string, object> expected, string tableName)
+        => VerifyTableDetailsAsync(s => root.Locator(s), expected, tableName);
+
+    protected Task<bool> VerifyTableDetailsAsync(IFrameLocator root, Dictionary<string, object> expected,
+        string tableName) => VerifyTableDetailsAsync(s => root.Locator(s), expected, tableName);
 }

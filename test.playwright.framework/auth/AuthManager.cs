@@ -45,7 +45,7 @@ public sealed class AuthManager(Contracts.IProfileProvider provider, AtfConfig c
         }
     }
 
-    private static async Task FillAndSubmitLoginForm(IPage page, UserProfiles p)
+    private static async Task FillAndSubmitLoginForm(IPage page, UserProfile p)
     {
         var userNameLocator = page.Locator(TestDataConstants.UserNameLocator);
         var passwordLocator = page.Locator(TestDataConstants.PasswordLocator);
@@ -82,7 +82,7 @@ public sealed class AuthManager(Contracts.IProfileProvider provider, AtfConfig c
         }
     }
 
-    public async Task SignInFromLandingAsync(IPage page, UserProfiles profile)
+    public async Task SignInFromLandingAsync(IPage page, UserProfile profile)
     {
         var locator = page.Locator(SignInSelector);
         await IsElementInteractable(locator);

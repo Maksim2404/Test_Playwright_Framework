@@ -12,11 +12,11 @@ public class Contracts
     }
 
     /// <summary>Packaged request sent to AuthManager.</summary>
-    public sealed record LoginRequest(UserProfiles Profile, LoginMode Mode);
+    public sealed record LoginRequest(UserProfile Profile, LoginMode Mode);
 
     /// <summary>Abstraction so we can swap where profiles come from (secrets, vault, CI).</summary>
     public interface IProfileProvider
     {
-        UserProfiles GetByName(string logicalName);
+        UserProfile GetByName(string logicalName);
     }
 }

@@ -86,6 +86,22 @@
           }
         }
       },
+      "Castle.Core/5.1.1": {
+        "type": "package",
+        "dependencies": {
+          "System.Diagnostics.EventLog": "6.0.0"
+        },
+        "compile": {
+          "lib/net6.0/Castle.Core.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net6.0/Castle.Core.dll": {
+            "related": ".xml"
+          }
+        }
+      },
       "ChartDirector.Net/7.1.0": {
         "type": "package",
         "dependencies": {
@@ -1316,6 +1332,18 @@
           }
         }
       },
+      "Moq/4.20.72": {
+        "type": "package",
+        "dependencies": {
+          "Castle.Core": "5.1.1"
+        },
+        "compile": {
+          "lib/net6.0/Moq.dll": {}
+        },
+        "runtime": {
+          "lib/net6.0/Moq.dll": {}
+        }
+      },
       "Namotion.Reflection/3.2.0": {
         "type": "package",
         "compile": {
@@ -1707,7 +1735,7 @@
           }
         }
       },
-      "SixLabors.ImageSharp/3.1.10": {
+      "SixLabors.ImageSharp/3.1.11": {
         "type": "package",
         "compile": {
           "lib/net6.0/SixLabors.ImageSharp.dll": {
@@ -1990,6 +2018,32 @@
         "runtime": {
           "lib/net5.0/System.Diagnostics.DiagnosticSource.dll": {
             "related": ".xml"
+          }
+        }
+      },
+      "System.Diagnostics.EventLog/6.0.0": {
+        "type": "package",
+        "compile": {
+          "lib/net6.0/System.Diagnostics.EventLog.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net6.0/System.Diagnostics.EventLog.dll": {
+            "related": ".xml"
+          }
+        },
+        "build": {
+          "buildTransitive/netcoreapp3.1/_._": {}
+        },
+        "runtimeTargets": {
+          "runtimes/win/lib/net6.0/System.Diagnostics.EventLog.Messages.dll": {
+            "assetType": "runtime",
+            "rid": "win"
+          },
+          "runtimes/win/lib/net6.0/System.Diagnostics.EventLog.dll": {
+            "assetType": "runtime",
+            "rid": "win"
           }
         }
       },
@@ -3121,6 +3175,30 @@
         "lib/netstandard1.3/Bogus.xml",
         "lib/netstandard2.0/Bogus.dll",
         "lib/netstandard2.0/Bogus.xml"
+      ]
+    },
+    "Castle.Core/5.1.1": {
+      "sha512": "rpYtIczkzGpf+EkZgDr9CClTdemhsrwA/W5hMoPjLkRFnXzH44zDLoovXeKtmxb1ykXK9aJVODSpiJml8CTw2g==",
+      "type": "package",
+      "path": "castle.core/5.1.1",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "ASL - Apache Software Foundation License.txt",
+        "CHANGELOG.md",
+        "LICENSE",
+        "castle-logo.png",
+        "castle.core.5.1.1.nupkg.sha512",
+        "castle.core.nuspec",
+        "lib/net462/Castle.Core.dll",
+        "lib/net462/Castle.Core.xml",
+        "lib/net6.0/Castle.Core.dll",
+        "lib/net6.0/Castle.Core.xml",
+        "lib/netstandard2.0/Castle.Core.dll",
+        "lib/netstandard2.0/Castle.Core.xml",
+        "lib/netstandard2.1/Castle.Core.dll",
+        "lib/netstandard2.1/Castle.Core.xml",
+        "readme.txt"
       ]
     },
     "ChartDirector.Net/7.1.0": {
@@ -5147,6 +5225,23 @@
         "readme.txt"
       ]
     },
+    "Moq/4.20.72": {
+      "sha512": "EA55cjyNn8eTNWrgrdZJH5QLFp2L43oxl1tlkoYUKIE9pRwL784OWiTXeCV5ApS+AMYEAlt7Fo03A2XfouvHmQ==",
+      "type": "package",
+      "path": "moq/4.20.72",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "icon.png",
+        "lib/net462/Moq.dll",
+        "lib/net6.0/Moq.dll",
+        "lib/netstandard2.0/Moq.dll",
+        "lib/netstandard2.1/Moq.dll",
+        "moq.4.20.72.nupkg.sha512",
+        "moq.nuspec",
+        "readme.md"
+      ]
+    },
     "Namotion.Reflection/3.2.0": {
       "sha512": "YfGjDPzMEs3vRMI4CMkJwOg75SV5JEDV72kMccD2GCo++TfgOYb5ZTpABYq3dUQqFtnAPpqMKM+deLlrUwnN1g==",
       "type": "package",
@@ -5897,10 +5992,10 @@
         "serilog.sinks.file.nuspec"
       ]
     },
-    "SixLabors.ImageSharp/3.1.10": {
-      "sha512": "R1HEPcqx3v+kvlOTPouP0g/Nzzud9pHtjlgGbFax3Ivaz8kkaGfS2EPfyDGpmfoTUQ3nQ5wxdhYyYa9fwYA9cw==",
+    "SixLabors.ImageSharp/3.1.11": {
+      "sha512": "JfPLyigLthuE50yi6tMt7Amrenr/fA31t2CvJyhy/kQmfulIBAqo5T/YFUSRHtuYPXRSaUHygFeh6Qd933EoSw==",
       "type": "package",
-      "path": "sixlabors.imagesharp/3.1.10",
+      "path": "sixlabors.imagesharp/3.1.11",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
@@ -5909,7 +6004,7 @@
         "lib/net6.0/SixLabors.ImageSharp.dll",
         "lib/net6.0/SixLabors.ImageSharp.xml",
         "sixlabors.imagesharp.128.png",
-        "sixlabors.imagesharp.3.1.10.nupkg.sha512",
+        "sixlabors.imagesharp.3.1.11.nupkg.sha512",
         "sixlabors.imagesharp.nuspec"
       ]
     },
@@ -6811,6 +6906,37 @@
         "system.diagnostics.diagnosticsource.nuspec",
         "useSharedDesignerContext.txt",
         "version.txt"
+      ]
+    },
+    "System.Diagnostics.EventLog/6.0.0": {
+      "sha512": "lcyUiXTsETK2ALsZrX+nWuHSIQeazhqPphLfaRxzdGaG93+0kELqpgEHtwWOlQe7+jSFnKwaCAgL4kjeZCQJnw==",
+      "type": "package",
+      "path": "system.diagnostics.eventlog/6.0.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Icon.png",
+        "LICENSE.TXT",
+        "THIRD-PARTY-NOTICES.TXT",
+        "buildTransitive/netcoreapp2.0/System.Diagnostics.EventLog.targets",
+        "buildTransitive/netcoreapp3.1/_._",
+        "lib/net461/System.Diagnostics.EventLog.dll",
+        "lib/net461/System.Diagnostics.EventLog.xml",
+        "lib/net6.0/System.Diagnostics.EventLog.dll",
+        "lib/net6.0/System.Diagnostics.EventLog.xml",
+        "lib/netcoreapp3.1/System.Diagnostics.EventLog.dll",
+        "lib/netcoreapp3.1/System.Diagnostics.EventLog.xml",
+        "lib/netstandard2.0/System.Diagnostics.EventLog.dll",
+        "lib/netstandard2.0/System.Diagnostics.EventLog.xml",
+        "runtimes/win/lib/net6.0/System.Diagnostics.EventLog.Messages.dll",
+        "runtimes/win/lib/net6.0/System.Diagnostics.EventLog.dll",
+        "runtimes/win/lib/net6.0/System.Diagnostics.EventLog.xml",
+        "runtimes/win/lib/netcoreapp3.1/System.Diagnostics.EventLog.Messages.dll",
+        "runtimes/win/lib/netcoreapp3.1/System.Diagnostics.EventLog.dll",
+        "runtimes/win/lib/netcoreapp3.1/System.Diagnostics.EventLog.xml",
+        "system.diagnostics.eventlog.6.0.0.nupkg.sha512",
+        "system.diagnostics.eventlog.nuspec",
+        "useSharedDesignerContext.txt"
       ]
     },
     "System.Diagnostics.Tracing/4.3.0": {
@@ -9503,6 +9629,7 @@
       "Microsoft.Playwright >= 1.53.0",
       "Microsoft.Playwright.NUnit >= 1.53.0",
       "Microsoft.Playwright.TestAdapter >= 1.53.0",
+      "Moq >= 4.20.72",
       "NUnit.Extension.NUnitV2ResultWriter >= 3.8.0",
       "NUnit3TestAdapter >= 5.0.0",
       "Otp.NET >= 1.4.0",
@@ -9510,7 +9637,7 @@
       "Serilog >= 4.3.0",
       "Serilog.Sinks.Console >= 6.0.0",
       "Serilog.Sinks.File >= 7.0.0",
-      "SixLabors.ImageSharp >= 3.1.10",
+      "SixLabors.ImageSharp >= 3.1.11",
       "SpecFlow >= 3.9.74",
       "SpecFlow.NUnit >= 3.9.74",
       "SpecFlow.NUnit.Runners >= 3.9.74",
@@ -9624,6 +9751,10 @@
             "target": "Package",
             "version": "[1.53.0, )"
           },
+          "Moq": {
+            "target": "Package",
+            "version": "[4.20.72, )"
+          },
           "NUnit.Extension.NUnitV2ResultWriter": {
             "target": "Package",
             "version": "[3.8.0, )"
@@ -9654,7 +9785,7 @@
           },
           "SixLabors.ImageSharp": {
             "target": "Package",
-            "version": "[3.1.10, )"
+            "version": "[3.1.11, )"
           },
           "SpecFlow": {
             "target": "Package",

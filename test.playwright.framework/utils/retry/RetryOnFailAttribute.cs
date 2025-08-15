@@ -1,9 +1,11 @@
-﻿using NUnit.Framework;
+﻿using Microsoft.Extensions.DependencyInjection;
+using NUnit.Framework;
 using NUnit.Framework.Interfaces;
 using NUnit.Framework.Internal;
 using NUnit.Framework.Internal.Commands;
 using Serilog;
 using test.playwright.framework.base_abstract;
+using test.playwright.framework.utils.interfaces;
 
 namespace test.playwright.framework.utils.retry;
 
@@ -23,59 +25,66 @@ public class RetryOnFailAttribute(int count = -1) : NUnitAttribute, IWrapSetUpTe
         return new RetryCommand(command, _retryCount);
     }
 
-    private class RetryCommand(TestCommand innerCommand, int retryCount) : DelegatingTestCommand(innerCommand)
+    private class RetryCommand(TestCommand innerCommand, int maxRetries) : DelegatingTestCommand(innerCommand)
     {
         public override TestResult Execute(TestExecutionContext context)
         {
-            var attemptScreenshots = new List<(int attempt, byte[] buffer)>();
+            var attemptScreenshots = new List<(int attempt, byte[] png)>();
             var attemptLogs = new List<string>();
-            var totalAttempts = retryCount;
 
-            for (var attempt = 1; attempt <= totalAttempts; attempt++)
+            for (var attempt = 1; attempt <= maxRetries; attempt++)
             {
-                var remaining = totalAttempts - attempt;
+                var remaining = maxRetries - attempt;
                 context.CurrentTest.Properties.Set("RemainingRetries", remaining);
-
                 innerCommand.Execute(context);
 
                 if (context.CurrentResult.ResultState.Status != TestStatus.Failed)
                     break;
 
+                /* -------- capture screenshot on failure -------- */
                 if (context.TestObject is BaseTest baseTest)
                 {
                     try
                     {
                         var page = baseTest.TestLifeCycleManager.Page;
-                        var diagMgr = baseTest.DiagnosticManager;
-                        var buffer = diagMgr.CaptureScreenshotBufferAsync(page).GetAwaiter().GetResult();
+                        var services = BaseTest.Services;
+                        var capturer = services!.GetRequiredService<IScreenCapturer>();
+                        var artifacts = services!.GetRequiredService<IArtifactStore>();
 
-                        attemptScreenshots.Add((attempt, buffer));
-                        context.CurrentTest.Properties.Set("RetryScreenshots", attemptScreenshots);
+                        if (!page.IsClosed)
+                        {
+                            var png = capturer.CaptureAsync(page).GetAwaiter().GetResult();
+                            if (png.Length > 0)
+                            {
+                                attemptScreenshots.Add((attempt, png));
 
-                        attemptLogs.Add(
-                            $"[Attempt {attempt}] Test failed with message: {context.CurrentResult.Message}.");
-                        context.CurrentTest.Properties.Set("RetryLogs", attemptLogs);
+                                artifacts.AttachToReport(png, $"Retry attempt {attempt}");
+                                artifacts.SaveScreenshotAsync(png, $"{context.CurrentTest.Name}_retry{attempt}")
+                                    .GetAwaiter()
+                                    .GetResult();
 
-                        Log.Information(
-                            $"RetryOnFail captured screenshot for attempt #{attempt} in {context.CurrentTest.Name}"
-                        );
+                                Log.Information("RetryOnFail captured screenshot for attempt #{Attempt} ({Test})",
+                                    attempt, context.CurrentTest.Name);
+                            }
+                        }
+                        else
+                        {
+                            Log.Warning("Page already closed—no screenshot for attempt {Attempt}", attempt);
+                        }
                     }
                     catch (Exception ex)
                     {
-                        Log.Error($"Error capturing screenshot in RetryOnFail: {ex.Message}");
+                        Log.Error(ex.Message, "RetryOnFail: error capturing screenshot");
                     }
                 }
 
-                if (attempt < retryCount)
-                {
-                    context.CurrentResult = context.CurrentTest.MakeTestResult();
-                }
+                attemptLogs.Add(
+                    $"[Attempt {attempt}] Failure: {context.CurrentResult.Message}");
+
+                if (attempt < maxRetries) context.CurrentResult = context.CurrentTest.MakeTestResult();
             }
 
-            if (attemptLogs.Count > 0)
-                context.CurrentTest.Properties.Set("RetryLogs", attemptLogs);
-
-
+            if (attemptLogs.Count > 0) context.CurrentTest.Properties.Set("RetryLogs", attemptLogs);
             if (attemptScreenshots.Count > 0)
                 context.CurrentTest.Properties.Set("RetryScreenshots", attemptScreenshots);
 

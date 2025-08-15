@@ -1,91 +1,106 @@
 ﻿using System.Diagnostics;
 using System.Text;
 using Allure.Net.Commons;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Newtonsoft.Json;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
 using Serilog;
+using Serilog.Events;
 using test.playwright.framework.auth;
 using test.playwright.framework.config;
+using test.playwright.framework.pages.enums;
 using test.playwright.framework.security.sql;
 using test.playwright.framework.security.xss;
 using test.playwright.framework.utils;
+using test.playwright.framework.utils.diagnostics;
 using test.playwright.framework.utils.interfaces;
 
 namespace test.playwright.framework.base_abstract;
 
 public abstract class BaseTest
 {
+     /* ---------- static DI container ---------- */
+    public static IServiceProvider? Services;
+
+    /* ---------- per‑class fields ---------- */
     private readonly TestMetricsManager _testMetricsManager;
-    protected internal readonly IDiagnosticManager DiagnosticManager;
-    protected internal readonly TestLifeCycleManager TestLifeCycleManager;
-    protected internal readonly AuthManager AuthManager;
+    protected internal TestLifeCycleManager TestLifeCycleManager = null!;
+    protected readonly AuthManager AuthManager;
+
+    /* new capturer / store */
+    private readonly IScreenCapturer _capturer;
+    private readonly IArtifactStore _artifacts;
+    private IVideoCopier _videoCopier;
+
     protected IPage Page => TestLifeCycleManager.Page;
-    private Stopwatch? _stopwatch;
-    private DateTime _testStartTime;
+    private Stopwatch? _suiteStopwatch;
     private Stopwatch? _testStopwatch;
+    private DateTime _testStartTime;
     protected static int TotalTestsRan;
     protected static int PassedTests;
     protected static int FailedTests;
+
+    /* config + reporting */
     protected readonly AtfConfig Config;
     protected readonly AllureLifecycle Allure;
     private readonly XssTestReport _xssReport = new();
-    private readonly SqlInjectionTestReport _sqlInjectionReport = new();
+    private readonly SqlInjectionTestReport _sqlReport = new();
     private const string DefaultDialogAction = "Accept";
-
-    protected void LogTestCompletion()
-    {
-        _testStopwatch?.Stop();
-        Log.Information($"Test finished at: {DateTime.Now}");
-
-        if (_testStopwatch != null) Log.Information($"Test execution time: {_testStopwatch.Elapsed}");
-    }
-
-    protected void UpdateGlobalXssReport(XssTestReport xssReport)
-    {
-        _xssReport.TotalPayloadsTested += xssReport.TotalPayloadsTested;
-        _xssReport.TotalFieldsTested += xssReport.TotalFieldsTested;
-        _xssReport.TotalPassed += xssReport.TotalPassed;
-        _xssReport.TotalFailed += xssReport.TotalFailed;
-        _xssReport.TestDetails.AddRange(xssReport.TestDetails);
-    }
-
-    protected void UpdateSqlInjectionReport(SqlInjectionTestReport sqlReport)
-    {
-        _sqlInjectionReport.TotalPayloadsTested += sqlReport.TotalPayloadsTested;
-        _sqlInjectionReport.TotalFieldsTested += sqlReport.TotalFieldsTested;
-        _sqlInjectionReport.TotalPassed += sqlReport.TotalPassed;
-        _sqlInjectionReport.TotalFailed += sqlReport.TotalFailed;
-        _sqlInjectionReport.TestDetails.AddRange(sqlReport.TestDetails);
-    }
 
     protected BaseTest()
     {
-        Config = AtfConfig.ReadConfig();
-        var browserManager = new BrowserManager();
-        var lifeCycle = new TestLifeCycleManager(browserManager, Config);
+        /*to run tests in a different env: AtfConfig.TestEnv.Override = "dev";*/
+        Services ??= BuildServices();
+        Config = Services.GetRequiredService<AtfConfig>();
+        _capturer = Services.GetRequiredService<IScreenCapturer>();
+        _artifacts = Services.GetRequiredService<IArtifactStore>();
+        _videoCopier = Services.GetRequiredService<IVideoCopier>();
         Contracts.IProfileProvider profiles = Config;
         AuthManager = new AuthManager(profiles, Config);
-        TestLifeCycleManager = lifeCycle;
         _testMetricsManager = new TestMetricsManager();
-        DiagnosticManager = new DiagnosticManager(Config);
         Allure = AllureLifecycle.Instance;
+    }
+
+    /* ---------- DI bootstrap ---------- */
+    private static IServiceProvider BuildServices()
+    {
+        var cfg = AtfConfig.ReadConfig();
+
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Information)
+            .WriteTo.File("logs/consoleLogs.txt", rollingInterval: RollingInterval.Day)
+            .CreateLogger();
+
+        var sc = new ServiceCollection();
+
+        sc.AddSingleton(cfg);
+        sc.AddSingleton<ILogger>(_ => Log.Logger);
+        sc.AddSingleton<IPlaywright>(_ => Playwright.CreateAsync().GetAwaiter().GetResult());
+
+        sc.AddSingleton<BrowserFactory, BrowserFactory>(sp => new BrowserFactory(
+            sp.GetRequiredService<IPlaywright>(),
+            Enum.Parse<SupportedBrowser>(cfg.Browser, true),
+            sp.GetRequiredService<ILogger>(),
+            cfg.Headless));
+
+        sc.AddTransient<IScreenCapturer, LocalScreenCapturer>();
+        sc.AddTransient<IArtifactStore>(_ => new FileSystemArtifactStore(cfg.ScreenshotPath!, Log.Logger));
+        sc.AddTransient<IVideoCopier>(_ => new VideoCopier(Log.Logger));
+
+        return sc.BuildServiceProvider();
     }
 
     [OneTimeSetUp]
     public void OneTimeSetUp()
     {
-        Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Debug()
-            .WriteTo.Console()
-            .WriteTo.File("logs/myapp.txt", rollingInterval: RollingInterval.Day)
-            .CreateLogger();
-
-        _stopwatch = Stopwatch.StartNew();
+        _suiteStopwatch = Stopwatch.StartNew();
         _testStartTime = DateTime.Now;
-        Log.Information($"Test Suite Started {_testStartTime}");
-        _testMetricsManager.TestCompleted += outcome => Log.Information($"Test outcome: {outcome}");
+
+        Log.Information("Test Suite Started {Start}", _testStartTime);
+        _testMetricsManager.TestCompleted += outcome => Log.Information("Test outcome: {Outcome}", outcome);
     }
 
     private async void OnDialogHandled(object? sender, IDialog dialog)
@@ -103,19 +118,22 @@ public abstract class BaseTest
     }
 
     [SetUp]
-    public async Task BeforeMethod()
+    public async Task TestInit()
     {
         TotalTestsRan++;
         _testStopwatch = Stopwatch.StartNew();
+
+        var lifeCycle = new TestLifeCycleManager(Services!.GetRequiredService<BrowserFactory>(), Config);
+        TestLifeCycleManager = lifeCycle;
         await TestLifeCycleManager.InitializeTestAsync();
         TestLifeCycleManager.Page.Dialog += OnDialogHandled;
     }
 
     [TearDown]
-    public async Task AfterMethod()
+    public async Task TestCleanup()
     {
         var testName = TestContext.CurrentContext.Test.FullName;
-        Log.Information($"Starting teardown for: {testName}");
+        Log.Information("Starting teardown for: {Test}", testName);
 
         try
         {
@@ -133,129 +151,106 @@ public abstract class BaseTest
                 _testMetricsManager.OnTestCompleted("Failed");
                 Log.Warning($"Test failed: {testName}");
 
-                var screenshotBuffer = await DiagnosticManager.CaptureScreenshotBufferAsync(TestLifeCycleManager.Page);
-                if (screenshotBuffer is { Length: > 0 })
+                await CaptureFailureScreenshot("FailedTest");
+
+                // — attach any retry screenshots —
+                if (TestContext.CurrentContext.Test.Properties.Get("RetryScreenshots")
+                    is List<(int attempt, byte[] buffer)> shots)
                 {
-                    await DiagnosticManager.SaveBufferToFileAsync(screenshotBuffer, "FailedTest",
-                        includeTimestamp: true);
-                    DiagnosticManager.AttachBufferToReport(screenshotBuffer);
+                    foreach (var (attempt, buf) in shots)
+                        await SaveAndAttach(buf, $"RetryAttempt_{attempt}");
                 }
-                else
-                {
-                    Log.Warning("Screenshot buffer was empty.");
-                }
-                /*DiagnosticsManager.CaptureVideoOfFailedTest("videos/", "failedTests");*/
+
+                /*when we need to record test: _videoCopier.CopyLastVideo("videos/", "failedTests/", testName);*/
             }
 
-            var logsObj = TestContext.CurrentContext.Test.Properties.Get("RetryLogs");
-            if (logsObj is List<string> { Count: > 0 } logs)
+            // — attach retry logs —
+            if (TestContext.CurrentContext.Test.Properties.Get("RetryLogs") is List<string> logs)
             {
-                var combinedLogs = string.Join(Environment.NewLine, logs);
-                var logBytes = Encoding.UTF8.GetBytes(combinedLogs);
-                AllureApi.AddAttachment("Retry Logs", "text/plain", logBytes);
+                var combined = string.Join(Environment.NewLine, logs);
+                _artifacts.AttachToReport(Encoding.UTF8.GetBytes(combined), "Retry Logs");
             }
-
-            var screenshotsObj = TestContext.CurrentContext.Test.Properties.Get("RetryScreenshots");
-            if (screenshotsObj is List<(int attempt, byte[] buffer)> { Count: > 0 } screenshotList)
-            {
-                Log.Information(
-                    $"Found {screenshotList.Count} screenshot(s) from failed attempts in RetryOnFail logic.");
-
-                foreach (var (attemptNumber, buffer) in screenshotList)
-                {
-                    await DiagnosticManager.SaveBufferToFileAsync(
-                        buffer, $"RetryFailedTestAttempt_{attemptNumber}",
-                        includeTimestamp: true
-                    );
-                    DiagnosticManager.AttachBufferToReport(buffer);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error($"Unexpected error during teardown for {testName}: {ex.Message}");
-            throw;
         }
         finally
         {
-            var remainProp = TestContext.CurrentContext.Test.Properties.Get("RemainingRetries");
-            if (remainProp is int remaining and > 0)
+            var shouldSkipClose =
+                TestContext.CurrentContext.Result.Outcome.Status == TestStatus.Failed &&
+                TestContext.CurrentContext.Test.Properties.Get("RemainingRetries") is int remaining &&
+                remaining > 0;
+            if (shouldSkipClose)
             {
-                Log.Information($"Skipping CloseTestAsync because {remaining} retry attempts remain.");
+                Log.Information("Skipping CloseTestAsync because 'Remaining' retry attempts remain.");
             }
             else
             {
                 TestLifeCycleManager.Page.Dialog -= OnDialogHandled;
-                await TestLifeCycleManager.CloseTestAsync();
-                Log.Information("Closed browser because test is complete (or final fail).");
+                await TestLifeCycleManager.DisposeAsync();
+                Log.Information("Closed browser context.");
             }
 
-            _testStopwatch?.Stop();
-            Log.Information($"Test finished at: {DateTime.Now}");
-            if (_testStopwatch != null)
-                Log.Information($"Test execution time: {_testStopwatch.Elapsed}");
-
-            Log.Information($"Tests Run So Far: {TotalTestsRan}, Passed: {PassedTests}, Failed: {FailedTests}");
+            _testStopwatch!.Stop();
+            Log.Information("Test finished ({Sec:n1}s)", _testStopwatch.Elapsed.TotalSeconds);
+            Log.Information("Totals so far — Run:{Run}, Passed:{Pass}, Failed:{Fail}",
+                TotalTestsRan, PassedTests, FailedTests);
         }
     }
 
+    /* ---------- suite teardown ---------- */
     [OneTimeTearDown]
-    public async Task OneTimeTearDown()
+    public async Task SuiteCleanup()
     {
         _testMetricsManager.LogMetrics();
-        Log.Information("Test Suite Completed");
-        await Log.CloseAndFlushAsync();
+        _suiteStopwatch!.Stop();
 
-        _stopwatch?.Stop();
-        Log.Information(
-            $"Final Metrics - Total tests run: {TotalTestsRan}, Passed: {PassedTests}, Failed: {FailedTests}");
-        Console.WriteLine($"Test suite finished at: {DateTime.Now}");
-        if (_stopwatch != null) Console.WriteLine($"Test execution time: {_stopwatch.Elapsed}");
+        Log.Information("Test Suite Completed ({Sec:n1}s)", _suiteStopwatch.Elapsed.TotalSeconds);
 
         if (_xssReport.TotalFieldsTested > 0)
-        {
-            const string xssReportPath = "reports/XssTestSummary.json";
-            Directory.CreateDirectory("reports");
-            await File.WriteAllTextAsync(xssReportPath, JsonConvert.SerializeObject(_xssReport, Formatting.Indented));
+            await WriteJsonReport("reports/XssTestSummary.json", _xssReport);
 
-            Log.Information($"XSS Test Summary Report saved at: {xssReportPath}");
-            Console.WriteLine(JsonConvert.SerializeObject(_xssReport, Formatting.Indented));
-        }
-
-        if (_sqlInjectionReport.TotalFieldsTested <= 0) return;
-        const string sqlReportPath = "reports/SqlInjectionTestSummary.json";
-        Directory.CreateDirectory("reports");
-        await File.WriteAllTextAsync(sqlReportPath,
-            JsonConvert.SerializeObject(_sqlInjectionReport, Formatting.Indented));
-
-        Log.Information($"SQL Injection Test Summary Report saved at: {sqlReportPath}");
-        Console.WriteLine(JsonConvert.SerializeObject(_sqlInjectionReport, Formatting.Indented));
+        if (_sqlReport.TotalFieldsTested > 0)
+            await WriteJsonReport("reports/SqlInjectionTestSummary.json", _sqlReport);
     }
 
-    private static async Task CaptureAllureScreenshot(IPage page)
+    /* ---------- helper methods ---------- */
+    private async Task CaptureFailureScreenshot(string prefix)
     {
-        try
-        {
-            const string screenshotDirectory = "allure-results/screenshots";
-            Directory.CreateDirectory(screenshotDirectory);
+        var png = await _capturer.CaptureAsync(Page);
+        await SaveAndAttach(png, prefix);
+    }
 
-            var fileName = $"AllureScreenshot_{DateTime.Now:yyyyMMdd_HHmmss}.png";
-            var screenshotPath = Path.Combine(screenshotDirectory, fileName);
+    private async Task SaveAndAttach(byte[] png, string prefix)
+    {
+        await _artifacts.SaveScreenshotAsync(png, prefix);
+        _artifacts.AttachToReport(png, prefix);
+    }
 
-            await page.ScreenshotAsync(new PageScreenshotOptions
-            {
-                Path = screenshotPath,
-                FullPage = false
-            });
+    private static async Task WriteJsonReport(string path, object obj)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllTextAsync(path, JsonConvert.SerializeObject(obj, Formatting.Indented));
+        Log.Information("Report saved: {Path}", path);
+    }
 
-            if (File.Exists(screenshotPath))
-            {
-                AllureApi.AddAttachment("Screenshot", "image/png", await File.ReadAllBytesAsync(screenshotPath));
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error capturing screenshot: {ex.Message}");
-        }
+    /* ---------- convenience for derived tests ---------- */
+    protected static async Task CaptureAllureScreenshot(IPage page)
+    {
+        var capturer = Services!.GetRequiredService<IScreenCapturer>();
+        var artifacts = Services!.GetRequiredService<IArtifactStore>();
+
+        var png = await capturer.CaptureAsync(page);
+        artifacts.AttachToReport(png, "Screenshot");
+    }
+
+    /* ---------- aggregate‑report helpers ---------- */
+    protected void UpdateGlobalXssReport(XssTestReport r) => Aggregate(_xssReport, r);
+    protected void UpdateSqlInjectionReport(SqlInjectionTestReport r) => Aggregate(_sqlReport, r);
+
+    private static void Aggregate(dynamic agg, dynamic delta)
+    {
+        agg.TotalPayloadsTested += delta.TotalPayloadsTested;
+        agg.TotalFieldsTested += delta.TotalFieldsTested;
+        agg.TotalPassed += delta.TotalPassed;
+        agg.TotalFailed += delta.TotalFailed;
+        agg.TestDetails.AddRange(delta.TestDetails);
     }
 }

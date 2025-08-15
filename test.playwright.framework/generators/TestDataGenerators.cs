@@ -1,4 +1,5 @@
 ﻿using Bogus;
+using test.playwright.framework.pages.enums;
 
 namespace test.playwright.framework.generators;
 
@@ -6,48 +7,81 @@ public static class TestDataGenerators
 {
     private static readonly Faker Faker = new();
     private static readonly Random Random = new();
-    
-    private static readonly Dictionary<string, string[]> AnotherValueOfValues = new()
-    {
-        { "anotherValue1", ["value1"] },
-        { "anotherValue2", ["value2"] },
-    };
-    
-    private static readonly string[] Types =
-    [
-        "type1", "type2", "type3"
-    ];
 
-    public static string GenerateRandomText(int length)
+    private static bool DefaultIsSentinel<T>() where T : struct, Enum
+    {
+        return Enum.TryParse("None", ignoreCase: true, out T sentinel) &&
+               EqualityComparer<T>.Default.Equals(default, sentinel);
+    }
+
+    public static T RandomEnum<T>(params T[] exclude) where T : struct, Enum
+    {
+        var exclusions = new HashSet<T>(exclude);
+        if (DefaultIsSentinel<T>()) exclusions.Add(default);
+
+        var pool = Enum.GetValues<T>().Except(exclusions).ToArray();
+        return Faker.PickRandom(pool);
+    }
+
+    public static List<T> RandomEnumMany<T>(int count, IEnumerable<T>? exclude = null) where T : struct, Enum
+    {
+        var exclusions = new HashSet<T>(exclude ?? []);
+        if (DefaultIsSentinel<T>()) exclusions.Add(default);
+
+        var pool = Enum.GetValues<T>().Except(exclusions).ToList();
+        if (count > pool.Count)
+            throw new ArgumentException($"Requested {count} items but only {pool.Count} available.");
+
+        return Faker.Random.ListItems(pool, count).ToList();
+    }
+
+    public static string RandomText(int length)
     {
         return Faker.Random.String2(length);
     }
 
-    public static string GenerateRandomNumber(int digits)
+    public static string RandomNumber(int digits)
     {
         var minValue = (int)Math.Pow(10, digits - 1);
         var maxValue = (int)Math.Pow(10, digits) - 1;
         return Faker.Random.Number(minValue, maxValue).ToString();
     }
 
-    public static string GenerateRandomFileName()
+    public static string RandomFileName()
     {
         return Faker.System.FileName();
     }
 
-    public static string GenerateRandomFakerYear()
+    public static string RandomYear()
     {
         return Faker.Date.Future().Year.ToString();
     }
 
-    public static string GenerateRandomEmail()
+    public static string RandomEmail()
     {
-        const string domain = "test.com";
+        const string domain = "example.com";
+        var userName = Faker.Random.String2(8, "ABCDEFGHIJKLMNOPQRSTUVWXYZ").ToLower();
 
-        var userName = Faker.System.FileName().Replace(".", "").Substring(0, 8);
         var email = $"{userName}@{domain}";
-
         return email;
+    }
+
+    public static string RandomPartsNumber(int digits = 1, bool testMode = true)
+    {
+        if (testMode)
+        {
+            return "1";
+        }
+
+        return digits switch
+        {
+            1 => Faker.Random.Number(2, 9).ToString(),
+            2 => Faker.Random.Number(11, 20).ToString(),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(digits),
+                "Only 1 or 2 digits are supported, up to 20 maximum."
+            )
+        };
     }
 
     public static string GenerateRandomWorkType(string? excludeWorkType = null)
@@ -79,49 +113,10 @@ public static class TestDataGenerators
         return randomYear.ToString();
     }
 
-    private static void Shuffle<T>(IList<T> list)
-    {
-        var n = list.Count;
-        while (n > 1)
-        {
-            n--;
-            var k = Random.Next(n + 1);
-            (list[k], list[n]) = (list[n], list[k]);
-        }
-    }
-    
-    public static string GenerateRandomValueBasedOnAnotherValue(string anotherValue)
-    {
-        if (AnotherValueOfValues.ContainsKey(anotherValue))
-        {
-            var titles = AnotherValueOfValues[anotherValue];
-            return titles[Faker.Random.Int(0, titles.Length - 1)];
-        }
-        else
-        {
-            throw new ArgumentException("Customer not found in title mappings.", nameof(anotherValue));
-        }
-    }
-    
-    public static List<string> GenerateRandomMultipleTypes(int count, List<string>? excludeTypes = null)
-    {
-        excludeTypes ??= [];
+    public static TaskTypeKind RandomTaskTypeKind(TaskTypeKind? exclude = null) => exclude is null
+        ? RandomEnum<TaskTypeKind>()
+        : RandomEnum(exclude.Value);
 
-        var availableTypes = Types.Except(excludeTypes).ToArray();
-        if (count > availableTypes.Length)
-        {
-            throw new ArgumentException("The count is greater than the number of available types.");
-        }
-
-        var uniqueTypes = new HashSet<string>();
-        while (uniqueTypes.Count < count)
-        {
-            var index = Random.Next(0, availableTypes.Length);
-            uniqueTypes.Add(availableTypes[index]);
-        }
-
-        var shuffledTypes = uniqueTypes.ToList();
-        Shuffle(shuffledTypes);
-        return shuffledTypes;
-    }
+    public static List<TaskTypeKind> RandomTaskTypeKinds(int count, IEnumerable<TaskTypeKind>? exclude = null)
+        => RandomEnumMany(count, exclude);
 }
