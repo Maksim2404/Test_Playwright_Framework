@@ -6,8 +6,16 @@ namespace test.playwright.framework.base_abstract;
 
 public abstract class BasePage(IPage page)
 {
-    protected IPage Page { get; } = page ?? throw new ArgumentNullException(nameof(page), "Page cannot be null");
+    protected internal IPage Page { get; } = page ?? throw new ArgumentNullException(nameof(page), "Page cannot be null");
+    
+    protected async Task<IPage> OpenNewTabAsync(string url)
+    {
+        var newPage = await Page.Context.NewPageAsync();
+        await newPage.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
+        return newPage;
+    }
 
+    //that will just wait for the opened page to load but the page itself opens in a new tab by design!!!
     protected async Task<IPage> OpenNewPageAsync(Func<Task> actionToOpenPage)
     {
         var newPageTask = Page.Context.WaitForPageAsync();

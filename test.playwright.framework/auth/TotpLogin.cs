@@ -1,7 +1,7 @@
-﻿using Microsoft.Playwright;
+﻿using Allure.Net.Commons;
+using Microsoft.Playwright;
 using OtpNet;
 using Serilog;
-using test.playwright.framework.utils;
 
 namespace test.playwright.framework.auth;
 
@@ -36,7 +36,7 @@ public static class TotpLogin
             return;
 
         Log.Error("TOTP login failed twice – taking screenshot.");
-        await DiagnosticManager.CaptureTotpScreenshotAsync(page);
+        await CaptureTotpFailureAsync(page);
         throw new Exception("TOTP login failed (code rejected twice).");
     }
 
@@ -47,5 +47,19 @@ public static class TotpLogin
         secondsRemaining = totp.RemainingSeconds();
         var code = totp.ComputeTotp(); // defaults: 30 s, SHA-1, 6 digits
         return code;
+    }
+
+    private static async Task CaptureTotpFailureAsync(IPage page)
+    {
+        var png = await page.ScreenshotAsync(new PageScreenshotOptions { FullPage = true });
+
+        const string dir = "totpFailedLoginScreenshots";
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, $"totp_failed_{DateTime.UtcNow:yyyyMMdd_HHmmss}.png");
+
+        await File.WriteAllBytesAsync(path, png);
+
+        AllureApi.AddAttachment("TOTP Failure", "image/png", png);
+        Log.Information("TOTP failure screenshot saved at {Path}", path);
     }
 }
