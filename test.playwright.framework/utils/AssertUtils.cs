@@ -10,8 +10,9 @@ public partial class AssertUtils(IPage page) : BasePage(page)
 {
     private ILocator EllipsisMenuList => Page.Locator("//div[@class='v-overlay__content']//div[@role='listbox']");
     private ILocator TaskLabelLocator => Page.Locator("//div[@class='task-node-content']/p");
+    private ILocator HighlightedNoteText(string className) => Page.Locator($"//mark[@class='{className}']");
 
-    private static readonly IReadOnlyDictionary<EllipsisEntity, IReadOnlyList<string>> EllipsisMenuExpectations =
+    private static readonly IReadOnlyDictionary<EllipsisEntity, IReadOnlyList<string>> EllipsisEntityExt =
         new Dictionary<EllipsisEntity, IReadOnlyList<string>>
         {
             [EllipsisEntity.Project] =
@@ -20,13 +21,6 @@ public partial class AssertUtils(IPage page) : BasePage(page)
                 "Edit Project",
                 "Manage Languages",
                 "Delete Project"
-            ],
-            [EllipsisEntity.Template] =
-            [
-                "Edit Template",
-                "Manage Template",
-                "Clone Template",
-                "Delete Template"
             ],
             [EllipsisEntity.User] =
             [
@@ -39,45 +33,60 @@ public partial class AssertUtils(IPage page) : BasePage(page)
 
     [GeneratedRegex(@"^\d+(?<taskType>.+)$", RegexOptions.Compiled | RegexOptions.Singleline)]
     private static partial Regex MyRegex();
+    
+    public async Task<bool> IsHighlightedNotesColorCorrect(HighlightMarkerKind highlightColor)
+    {
+        Log.Information("Attempting to verify highlight color: {ToUi}.", highlightColor.ToUi());
 
-    private async Task<List<string>> GetEllipsisMenuOptions()
+        if (!HighlightMarkerExt.ColorToClassMap.TryGetValue(highlightColor, out var className))
+        {
+            Log.Information("Color description {HighlightMarkerKind} not found in mapping.", highlightColor);
+            return false;
+        }
+
+        await ReadyAsync(HighlightedNoteText(className));
+
+        var elements = await HighlightedNoteText(className).ElementHandlesAsync();
+        var isHighlighted = elements.Count > 0;
+
+        Log.Information(isHighlighted
+            ? $"Successfully found highlighted text with color: {highlightColor}."
+            : $"No highlighted text found with color: {highlightColor}.");
+
+        return isHighlighted;
+    }
+
+    private async Task<bool> IsErrorPopupPresent(ILocator popup)
+    {
+        var errorPresent = await WaitVisibleAsync(popup);
+
+        Log.Information(errorPresent
+            ? $"Popup {popup} appeared."
+            : $"Popup {popup} did not appear.");
+
+        return errorPresent;
+    }
+
+    private async Task<IReadOnlyList<string>> GetEllipsisMenuOptions()
     {
         await WaitVisibleAsync(EllipsisMenuList);
         var menuItems = EllipsisMenuList.Locator("div.v-list-item-title");
-        var count = await menuItems.CountAsync();
-        var texts = new List<string>();
-        for (var i = 0; i < count; i++)
-        {
-            var text = await menuItems.Nth(i).InnerTextAsync();
-            texts.Add(text.Trim());
-        }
-
-        return texts;
+        return (await menuItems.AllInnerTextsAsync()).Select(s => s.Trim()).ToArray();
     }
 
     public async Task<bool> VerifyEllipsisMenu(EllipsisEntity entityType)
     {
-        var expectedItems = EllipsisMenuExpectations[entityType];
+        var expectedItems = EllipsisEntityExt[entityType];
         var actualItems = await GetEllipsisMenuOptions();
 
-        if (actualItems.Count != expectedItems.Count)
+        var ok = expectedItems.SequenceEqual(actualItems, StringComparer.OrdinalIgnoreCase);
+        if (!ok)
         {
-            Log.Error("Menu count mismatch for {Type}: expected {E}, got {A}", entityType, expectedItems.Count,
-                actualItems.Count);
-            return false;
+            Log.Error("Ellipsis mismatch. Expected: [{E}] Got: [{A}]", string.Join(", ", expectedItems),
+                string.Join(", ", actualItems));
         }
 
-        for (var i = 0; i < expectedItems.Count; i++)
-        {
-            if (!string.Equals(expectedItems[i], actualItems[i], StringComparison.OrdinalIgnoreCase))
-            {
-                Log.Error("Menu item mismatch at {Idx}: exp='{Exp}' got='{Got}'", i, expectedItems[i], actualItems[i]);
-                return false;
-            }
-        }
-
-        Log.Information("Ellipsis menu items matched for {Type}.", entityType);
-        return true;
+        return ok;
     }
 
     protected delegate bool FieldComparer(string actual, object expected);
@@ -90,27 +99,28 @@ public partial class AssertUtils(IPage page) : BasePage(page)
 
     protected async Task<bool> VerifyFieldAsync(ILocator cell, object? expected, FieldComparer? comparer = null)
     {
+        await cell.ExpectSingleVisibleAsync();
         var count = await cell.CountAsync();
 
         bool ok;
         if (count == 0)
         {
             ok = expected is null;
-            Log.Debug("Verify  <missing element>  vs  «{Expected}»  ⇒  {Ok}", expected, ok);
+            Log.Information("Verify  <missing element>  vs  «{Expected}»  ⇒  {Ok}", expected, ok);
             return ok;
         }
 
-        var txt = (await cell.InnerTextAsync())?.Trim() ?? "";
+        var txt = (await cell.InnerTextAsync()).Trim();
 
         if (expected is null)
         {
             ok = string.IsNullOrWhiteSpace(txt);
-            Log.Debug("Verify  «{Actual}»  is empty  ⇒  {Ok}", txt, ok);
+            Log.Information("Verify  «{Actual}»  is empty  ⇒  {Ok}", txt, ok);
         }
         else
         {
             ok = (comparer ?? Exact)(txt, expected);
-            Log.Debug("Verify  «{Actual}»  vs  «{Expected}»  ⇒  {Ok}", txt, expected, ok);
+            Log.Information("Verify  «{Actual}»  vs  «{Expected}»  ⇒  {Ok}", txt, expected, ok);
         }
 
         return ok;
@@ -195,66 +205,76 @@ public partial class AssertUtils(IPage page) : BasePage(page)
         var text = textContent[startIndex..].Trim();
         return text;
     }
-
-    protected async Task<bool> IsToggledOn(ILocator toggleLocator)
+    
+    private static async Task<bool> TextEqualsAsync(ILocator loc, string expected, bool ignoreCase = false,
+        bool collapseWhitespace = true)
     {
-        var isChecked = await toggleLocator.IsCheckedAsync();
-        Log.Information($"Toggle checked state: {isChecked}");
-        return isChecked;
+        var actual = await loc.InnerTextAsync();
+        return TextMatch.Equals(actual, expected, ignoreCase, collapseWhitespace);
     }
 
-    protected async Task<bool> WaitAndVerifySingleElementText(string expectedText, object selectorOrLocator,
-        bool partialMatch = false, bool ignoreCase = false)
+    private static async Task<bool> TextContainsAsync(ILocator loc, string expected, bool ignoreCase = false,
+        bool collapseWhitespace = true)
+    {
+        var actual = await loc.InnerTextAsync();
+        return TextMatch.Contains(actual, expected, ignoreCase, collapseWhitespace);
+    }
+
+    protected async Task<bool> WaitAndVerifySingleElementText(string expectedText, ILocator selectorOrLocator,
+        bool partialMatch = false, bool ignoreCase = false, bool collapseWhitespace = true)
     {
         try
         {
             var locator = await EnsureLocatorAsync(selectorOrLocator);
             await locator.ExpectVisibleCountAsync();
 
-            var text = await locator.TextContentAsync();
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                Log.Error("Element text is null or empty.");
-                return false;
-            }
+            var matches = partialMatch
+                ? await TextContainsAsync(locator, expectedText, ignoreCase, collapseWhitespace)
+                : await TextEqualsAsync(locator, expectedText, ignoreCase, collapseWhitespace);
 
-            text = text.Trim();
-            var comparisonType = ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            var actual = TextMatch.Normalize(await locator.InnerTextAsync(), collapseWhitespace);
 
-            bool matches;
-            if (partialMatch)
+            if (matches)
             {
-                matches = text.Contains(expectedText, StringComparison.OrdinalIgnoreCase);
-                Log.Information(matches
-                    ? $"Partial match found. Expected substring '{expectedText}', Actual '{text}'."
-                    : $"Partial match FAILED. Expected substring '{expectedText}', Actual '{text}'.");
+                Log.Information("Text match succeeded. Mode={Mode}, Expected='{Exp}', Actual='{Act}'",
+                    partialMatch ? "contains" : "equals", expectedText, actual);
             }
             else
             {
-                matches = text.Equals(expectedText, comparisonType);
-                Log.Information(matches
-                    ? $"Exact match succeeded. Expected '{expectedText}', Actual '{text}'."
-                    : $"Exact match FAILED. Expected '{expectedText}', Actual '{text}'.");
+                Log.Warning("Text match FAILED. Mode={Mode}, Expected='{Exp}', Actual='{Act}'",
+                    partialMatch ? "contains" : "equals", expectedText, actual);
             }
 
             return matches;
         }
-        catch (TimeoutException tex)
-        {
-            Log.Error($"Timeout waiting for the element to be visible. {tex.Message}");
-            return false;
-        }
         catch (PlaywrightException ex)
         {
-            Log.Error($"Error while waiting/verifying single element text: {ex.Message}");
+            Log.Error("Playwright error while verifying element text. {Msg}", ex.Message);
             return false;
+        }
+    }
+    
+    private async Task<bool> IsToggledOn(ILocator toggleLocator)
+    {
+        var isChecked = await toggleLocator.IsCheckedAsync();
+        Log.Information("Toggle checked state: {IsChecked}", isChecked);
+        return isChecked;
+    }
+
+    protected async Task EnsureToggleStateAsync(ILocator toggle, bool shouldBeOn)
+    {
+        var isOn = await IsToggledOn(toggle);
+        if (isOn != shouldBeOn)
+        {
+            await ClickAsync(toggle);
+            if (shouldBeOn) await Assertions.Expect(toggle).ToBeCheckedAsync();
+            else await Assertions.Expect(toggle).Not.ToBeCheckedAsync();
         }
     }
 
     private static string Pretty(object value) => value switch
     {
-        IEnumerable<string> list when value is not string =>
-            string.Join(", ", list),
+        IEnumerable<string> list when value is not string => string.Join(", ", list),
 
         null => "«null»",
         _ => value.ToString()!
@@ -276,11 +296,12 @@ public partial class AssertUtils(IPage page) : BasePage(page)
                 continue;
             }
 
-            var cellText = (await cell.InnerTextAsync())?.Trim() ?? string.Empty;
+            var cellText = (await cell.InnerTextAsync()).Trim();
 
             var match = expectedValue switch
             {
-                string s => Normalise(cellText).Equals(Normalise(s), StringComparison.OrdinalIgnoreCase),
+                string s => TextMatch.Normalize(cellText)
+                    .Equals(TextMatch.Normalize(s), StringComparison.OrdinalIgnoreCase),
 
                 IEnumerable<string> list when expectedValue is not string =>
                     list.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(
@@ -298,7 +319,7 @@ public partial class AssertUtils(IPage page) : BasePage(page)
 
         if (mismatches.Count == 0)
         {
-            Log.Information($"All properties for asset “{tableName}” verified successfully.");
+            Log.Information("All properties for object “{TableName}” verified successfully.", tableName);
             return true;
         }
 

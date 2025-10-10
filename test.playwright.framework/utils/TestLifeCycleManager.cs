@@ -34,6 +34,10 @@ public class TestLifeCycleManager : IAsyncDisposable
         _stopwatch.Start();
         Log.Information("🟢 Test started: {Name}", TestContext.CurrentContext.Test.FullName);
 
+        Stopwatch.StartNew();
+        Log.Information("Starting test: {TestName}", TestContext.CurrentContext.Test.FullName);
+        Log.Information("Test started at: {DateTime}", DateTime.Now);
+
         //Skip auto-login if the attribute is present
         if (TestContext.CurrentContext.Test.Properties.ContainsKey("NoAutoLogin"))
         {
@@ -41,21 +45,48 @@ public class TestLifeCycleManager : IAsyncDisposable
             return;
         }
 
-        //Choose the profile by typing [TestCase("Bob")] overrides default
-        var requestedName = TestContext.CurrentContext.Test.Arguments
-            .OfType<string>()
-            .FirstOrDefault();
+        string? requestedProp = null;
+        if (TestContext.CurrentContext.Test.Properties.ContainsKey("ProfileName"))
+        {
+            requestedProp = TestContext.CurrentContext.Test.Properties["ProfileName"]
+                .Cast<string>()
+                .FirstOrDefault();
+        }
 
-        var profile = string.IsNullOrEmpty(requestedName)
-            ? _profiles.GetByName("QA AM")
-            : _profiles.GetByName(requestedName);
+        UserProfile profile;
+        if (!string.IsNullOrWhiteSpace(requestedProp))
+        {
+            profile = _profiles.GetByName(requestedProp);
+        }
+        else
+        {
+            profile = TryPickProfileFromArgs(_profiles, TestContext.CurrentContext.Test.Arguments)
+                      ?? _profiles.GetByName("Eikon Test");
+        }
 
+        CurrentUserProfile = profile;
         var mode = string.IsNullOrWhiteSpace(profile.TotpSecret)
             ? Contracts.LoginMode.PasswordOnly
             : Contracts.LoginMode.Totp;
 
         CurrentUserProfile = profile;
         await _authMgr.LoginAsync(Page, new Contracts.LoginRequest(profile, mode));
+    }
+    
+    private static UserProfile? TryPickProfileFromArgs(Contracts.IProfileProvider profiles, object?[] args)
+    {
+        foreach (var s in args.OfType<string>())
+        {
+            try
+            {
+                return profiles.GetByName(s);
+            }
+            catch
+            {
+                // Not a profile name → ignore and continue
+            }
+        }
+        return null;
     }
 
     /* ---------- network helpers ---------- */
