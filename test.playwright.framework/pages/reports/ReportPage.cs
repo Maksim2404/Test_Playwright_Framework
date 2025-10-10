@@ -25,13 +25,13 @@ public class ReportPage(IPage page) : BaseProjectElements(page)
 
     public async Task<ReportPage> ClickDownloadReportButton()
     {
-        await Click(DownloadReportButton);
+        await ClickAsync(DownloadReportButton);
         return this;
     }
 
     public async Task<ReportPage> ClickQuickFilterThisMonth()
     {
-        await Click(QuickFilterChip("This Month"));
+        await ClickAsync(QuickFilterChip("This Month"));
         return this;
     }
 
@@ -39,7 +39,7 @@ public class ReportPage(IPage page) : BaseProjectElements(page)
     {
         now ??= DateTimeOffset.Now;
         var label = ReportDateRanges.MonthChipLabelForNBack(now.Value, monthsBack);
-        await Click(QuickFilterChip(label));
+        await ClickAsync(QuickFilterChip(label));
         return this;
     }
 
@@ -48,8 +48,8 @@ public class ReportPage(IPage page) : BaseProjectElements(page)
         var startDate = start.ToString(UiDateFormatLiteralSlash, CultureInfo.InvariantCulture);
         var endDate = end.ToString(UiDateFormatLiteralSlash, CultureInfo.InvariantCulture);
 
-        await Input(StartDateSearchField, startDate);
-        await Input(EndDateSearchField, endDate);
+        await InputAsync(StartDateSearchField, startDate);
+        await InputAsync(EndDateSearchField, endDate);
 
         var (startUi, endUi) = await ReadDateRangeAsync();
         startUi.Should().Be(startDate);

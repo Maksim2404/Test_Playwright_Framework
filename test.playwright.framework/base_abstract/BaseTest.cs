@@ -19,6 +19,7 @@ using test.playwright.framework.utils.interfaces;
 
 namespace test.playwright.framework.base_abstract;
 
+[TestFixture]
 public abstract class BaseTest
 {
      /* ---------- static DI container ---------- */
@@ -33,6 +34,7 @@ public abstract class BaseTest
     private readonly IScreenCapturer _capturer;
     private readonly IArtifactStore _artifacts;
     private IVideoCopier _videoCopier;
+    private readonly IImageComparer _comparer;
 
     protected IPage Page => TestLifeCycleManager.Page;
     private Stopwatch? _suiteStopwatch;
@@ -57,6 +59,7 @@ public abstract class BaseTest
         _capturer = Services.GetRequiredService<IScreenCapturer>();
         _artifacts = Services.GetRequiredService<IArtifactStore>();
         _videoCopier = Services.GetRequiredService<IVideoCopier>();
+        _comparer = Services.GetRequiredService<IImageComparer>();
         Contracts.IProfileProvider profiles = Config;
         AuthManager = new AuthManager(profiles, Config);
         _testMetricsManager = new TestMetricsManager();
@@ -89,6 +92,7 @@ public abstract class BaseTest
         sc.AddTransient<IScreenCapturer, LocalScreenCapturer>();
         sc.AddTransient<IArtifactStore>(_ => new FileSystemArtifactStore(cfg.ScreenshotPath!, Log.Logger));
         sc.AddTransient<IVideoCopier>(_ => new VideoCopier(Log.Logger));
+        sc.AddTransient<IImageComparer>(_ => new PixelImageComparer());
 
         return sc.BuildServiceProvider();
     }

@@ -42,7 +42,7 @@ public partial class AssertUtils(IPage page) : BasePage(page)
 
     private async Task<List<string>> GetEllipsisMenuOptions()
     {
-        await WaitForLocatorToExistAsync(EllipsisMenuList);
+        await WaitVisibleAsync(EllipsisMenuList);
         var menuItems = EllipsisMenuList.Locator("div.v-list-item-title");
         var count = await menuItems.CountAsync();
         var texts = new List<string>();
@@ -123,10 +123,10 @@ public partial class AssertUtils(IPage page) : BasePage(page)
         {
             case string selector:
                 locator = Page.Locator(selector);
-                await WaitForLocatorToExistAsync(locator);
+                await WaitVisibleAsync(locator);
                 break;
             case ILocator loc:
-                await WaitForLocatorToExistAsync(loc);
+                await WaitVisibleAsync(loc);
                 locator = loc;
                 break;
             default:
@@ -270,7 +270,7 @@ public partial class AssertUtils(IPage page) : BasePage(page)
         {
             var cell = locatorProvider($"//tr[td[1][normalize-space(text())='{key}']]/td[2]");
 
-            if (!await WaitForLocatorToExistAsync(cell))
+            if (!await WaitVisibleAsync(cell))
             {
                 mismatches.Add($"Row “{key}” not found");
                 continue;

@@ -1,17 +1,24 @@
-﻿using System.Diagnostics;
+﻿using System.Globalization;
+using System.Text.RegularExpressions;
 using Microsoft.Playwright;
 using Serilog;
+using test.playwright.framework.utils;
 
 namespace test.playwright.framework.base_abstract;
 
-public abstract class BasePage(IPage page)
+public record UiTimeouts(int ShortMs = 3000, int DefaultMs = 15000, int LongMs = 20000);
+
+public abstract class BasePage(IPage page, UiTimeouts? timeouts = null)
 {
-    protected internal IPage Page { get; } = page ?? throw new ArgumentNullException(nameof(page), "Page cannot be null");
+    protected UiTimeouts T { get; } = timeouts ?? new UiTimeouts();
     
-    protected async Task<IPage> OpenNewTabAsync(string url)
+    protected internal IPage Page { get; } =
+        page ?? throw new ArgumentNullException(nameof(page), "Page cannot be null");
+
+    protected async Task<IPage> OpenNewTabAsync(string url, WaitUntilState wait = WaitUntilState.Load)
     {
         var newPage = await Page.Context.NewPageAsync();
-        await newPage.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
+        await newPage.GotoAsync(url, new PageGotoOptions { WaitUntil = wait });
         return newPage;
     }
 
@@ -27,15 +34,21 @@ public abstract class BasePage(IPage page)
         return newPage;
     }
 
-    protected internal async Task<IPage> CloseCurrentPageAndSwitchBackAsync()
+    protected internal async Task<IPage?> CloseCurrentPageAndSwitchBackAsync()
     {
+        var pages = Page.Context.Pages;
+        IPage? target = null;
+
+        for (var i = 0; i < pages.Count; i++)
+        {
+            if (!ReferenceEquals(pages[i], Page)) continue;
+            target = i > 0 ? pages[i - 1] : pages.Count > 1 ? pages[1] : null;
+            break;
+        }
+
         await Page.CloseAsync();
-
-        var allPages = Page.Context.Pages;
-        var previousPage = allPages[^1];
-
-        await previousPage.BringToFrontAsync(); // Ensure the previous page is in the foreground
-        return previousPage;
+        if (target != null) await target.BringToFrontAsync();
+        return target;
     }
 
     protected async Task WaitForNetworkIdle()
@@ -49,8 +62,27 @@ public abstract class BasePage(IPage page)
             new PageWaitForLoadStateOptions { Timeout = 15000 });
     }
 
-    protected async Task<bool> IsElementReadyForInteraction(ILocator locator, int timeoutMs = 10000)
+    protected async Task<bool> ReadyAsync(ILocator locator, int timeoutMs = 0)
     {
+        var t = timeoutMs <= 0 ? T.DefaultMs : timeoutMs;
+        try
+        {
+            await Assertions.Expect(locator).ToBeVisibleAsync(new LocatorAssertionsToBeVisibleOptions { Timeout = t });
+            await Assertions.Expect(locator).ToBeEnabledAsync(new LocatorAssertionsToBeEnabledOptions { Timeout = t });
+            Log.Information("Element '{Locator}' is visible and enabled. Ready for interaction.", locator);
+            return true;
+        }
+
+        catch (PlaywrightException ex)
+        {
+            Log.Error("Element '{Locator}' not ready within {TimeoutMs}ms: {Msg}", locator, t, ex.Message);
+            return false;
+        }
+    }
+    
+    public async Task<bool> WaitVisibleAsync(ILocator locator, int timeoutMs = 15000)
+    {
+        timeoutMs = timeoutMs <= 0 ? T.DefaultMs : timeoutMs;
         try
         {
             await locator.WaitForAsync(new LocatorWaitForOptions
@@ -59,113 +91,111 @@ public abstract class BasePage(IPage page)
                 Timeout = timeoutMs
             });
 
-            var stopwatch = Stopwatch.StartNew();
-            while (stopwatch.ElapsedMilliseconds < timeoutMs)
+            Log.Information("Locator {Locator} became visible within {TimeoutMs}ms.", locator, timeoutMs);
+            return true;
+        }
+        catch (PlaywrightException ex)
+        {
+            Log.Warning("Timeout waiting for locator to appear - {ExMessage}", ex.Message);
+            return false;
+        }
+    }
+    
+    protected async Task<bool> WaitAbsentAsync(ILocator locator, int timeoutMs = 0)
+    {
+        timeoutMs = timeoutMs <= 0 ? T.DefaultMs : timeoutMs;
+        try
+        {
+            await locator.WaitForAsync(new LocatorWaitForOptions
             {
-                if (await locator.IsEnabledAsync())
+                State = WaitForSelectorState.Detached,
+                Timeout = timeoutMs
+            });
+
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            try
+            {
+                await locator.WaitForAsync(new LocatorWaitForOptions
                 {
-                    Log.Information($"Element '{locator}' is visible and enabled. Ready for interaction.");
-                    return true;
-                }
+                    State = WaitForSelectorState.Hidden,
+                    Timeout = timeoutMs
+                });
 
-                await Task.Delay(250);
+                return true;
             }
-
-            Log.Information($"Element '{locator}' is visible but stayed disabled up to {timeoutMs}ms.");
-            return false;
-        }
-        catch (TimeoutException ex)
-        {
-            Log.Error($"Element '{locator}' not visible within {timeoutMs}ms: {ex.Message}");
-            return false;
-        }
-        catch (PlaywrightException ex)
-        {
-            Log.Error($"Failed to verify if element '{locator}' is ready for interaction: {ex.Message}");
-            return false;
-        }
-    }
-
-    private async Task HoverToElement(ILocator locator)
-    {
-        if (!await IsElementReadyForInteraction(locator)) return;
-        await locator.HoverAsync();
-        Log.Information($"Hovered over element: {locator}");
-    }
-
-    protected async Task Click(ILocator locator)
-    {
-        try
-        {
-            if (await IsElementReadyForInteraction(locator))
+            catch
             {
-                await HoverToElement(locator);
-                await locator.ClickAsync();
-                Log.Information($"Clicked on element: {locator}");
+                Log.Error("Locator still present after timeout.");
+                return false;
             }
         }
-        catch (PlaywrightException ex)
-        {
-            Log.Error($"Failed to click on element with locator '{locator}': {ex.Message}");
-            throw;
-        }
     }
-
-    protected async Task ClickElementByMouse(ILocator locator)
+    
+    public Task<string> GetTitleAsync()
     {
-        if (!await IsElementReadyForInteraction(locator)) return;
-
-        var boundingBox = await locator.BoundingBoxAsync();
-        if (boundingBox != null)
-        {
-            var x = boundingBox.X + boundingBox.Width / 2;
-            var y = boundingBox.Y + boundingBox.Height / 2;
-            await Page.Mouse.ClickAsync(x, y);
-            Log.Information($"Clicked on element {locator} by mouse!");
-        }
-        else
-        {
-            Log.Information("Element's bounding box is not available");
-        }
-    }
-
-    protected async Task DoubleClickElement(ILocator locator)
-    {
-        try
-        {
-            await IsElementReadyForInteraction(locator);
-            await locator.DblClickAsync();
-
-            await WaitForNetworkIdle();
-            Log.Information($"Double-clicked on element: {locator}");
-        }
-        catch (PlaywrightException ex)
-        {
-            Log.Error($"Failed to double-click on element with locator '{locator}': {ex.Message}");
-            throw;
-        }
-    }
-
-    public async Task<string> GetTitle()
-    {
-        var title = await Page.TitleAsync();
-        Log.Information($"Page title retrieved: {title}");
+        var title = Page.TitleAsync();
+        Log.Information("Page title retrieved: {Title}", title);
         return title;
     }
 
-    public async Task DragAndDrop(ILocator sourceLocator, ILocator targetLocator)
+    protected async Task HoverAsync(ILocator locator, int timeoutMs = 0)
+    {
+        if (!await ReadyAsync(locator, timeoutMs))
+            throw new PlaywrightException($"Locator not ready for click: {locator}");
+        await locator.HoverAsync(new LocatorHoverOptions { Timeout = timeoutMs > 0 ? timeoutMs : T.DefaultMs });
+        Log.Debug("Hovered over element: {Locator}", locator);
+    }
+
+    protected async Task ClickAsync(ILocator locator)
+    {
+        await HoverAsync(locator);
+        await locator.ClickAsync();
+        Log.Debug("Clicked on element: {Locator}", locator);
+    }
+
+    protected async Task MouseClickCenterAsync(ILocator locator)
+    {
+        if (!await ReadyAsync(locator)) throw new PlaywrightException($"Locator not ready: {locator}");
+        var box = await locator.BoundingBoxAsync();
+        if (box is null) throw new PlaywrightException("Bounding box not available");
+        await Page.Mouse.ClickAsync(box.X + box.Width / 2, box.Y + box.Height / 2);
+    }
+
+    protected async Task DoubleClickAsync(ILocator locator, int timeoutMs = 0)
+    {
+        if (!await ReadyAsync(locator, timeoutMs))
+            throw new PlaywrightException($"Locator not ready for double‑click: {locator}");
+
+        await locator.DblClickAsync(new LocatorDblClickOptions { Timeout = timeoutMs > 0 ? timeoutMs : T.DefaultMs });
+    }
+
+    protected async Task ClickByJavaScript(string selector)
+    {
+        await Page.EvaluateAsync(@"(selector) => {const element = document.querySelector(selector);
+        if (element) element.click(); else throw new Error('Element not found');}", selector);
+    }
+
+    public int GetListSize(List<IElementHandle> list)
+    {
+        return list.Count;
+    }
+
+    public async Task DragAndDrop(ILocator sourceSelector, ILocator targetSelector)
     {
         try
         {
-            var isSourceVisibleAndEnabled = await IsElementReadyForInteraction(sourceLocator);
-            var isTargetVisibleAndEnabled = await IsElementReadyForInteraction(targetLocator);
+            var isSourceVisibleAndEnabled = await ReadyAsync(sourceSelector);
+            var isTargetVisibleAndEnabled = await ReadyAsync(targetSelector);
 
             if (isSourceVisibleAndEnabled && isTargetVisibleAndEnabled)
             {
                 {
-                    var sourceElement = sourceLocator.First;
+                    var sourceElement = sourceSelector.First;
                     {
-                        var targetElement = targetLocator.First;
+                        var targetElement = targetSelector.First;
 
                         await sourceElement.DragToAsync(targetElement);
                     }
@@ -182,81 +212,143 @@ public abstract class BasePage(IPage page)
         }
     }
 
-    protected async Task Clear(ILocator locator)
+    protected async Task ClearAsync(ILocator locator)
     {
-        await IsElementReadyForInteraction(locator);
         await locator.FillAsync(string.Empty);
-        await WaitForNetworkIdle();
-        Log.Information($"Cleared content of element: {locator}");
+        Log.Information("Cleared content of element: {Locator}", locator);
     }
 
-    protected async Task Input(ILocator locator, string text)
+    protected async Task HardClearAsync(ILocator input)
+    {
+        await ClickAsync(input);
+        await input.PressAsync("Control+A");
+        await input.PressAsync("Delete");
+    }
+
+    private static string DigitsOnly(string s) => Regex.Replace(s, @"\D", "");
+
+    protected async Task InputAsync(ILocator locator, string text)
+    {
+        await locator.ClickAsync();
+        await locator.ClearAsync();
+        await locator.FillAsync(text);
+        var tag = await locator.EvaluateAsync<string>("e => e.tagName.toLowerCase()");
+        if (tag is "input" or "textarea")
+        {
+            var actual = await locator.InputValueAsync();
+            if (DigitsOnly(actual) != DigitsOnly(text))
+                await Assertions.Expect(locator).ToHaveValueAsync(text);
+        }
+        else
+        {
+            var actual = await locator.InnerTextAsync();
+            if (DigitsOnly(actual) != DigitsOnly(text))
+                await Assertions.Expect(locator).ToHaveTextAsync(text);
+        }
+
+        Log.Information("Filled text '{Text}' into element: {Locator}", text, locator);
+    }
+
+    protected async Task InputNumberAsync(ILocator locator, int value)
+    {
+        var expected = value.ToString(CultureInfo.InvariantCulture);
+
+        await ClickAsync(locator);
+        await ClearAsync(locator);
+        await locator.FillAsync(expected);
+
+        var regex = new Regex($"^0*{Regex.Escape(expected)}$");
+        await Assertions.Expect(locator).ToHaveValueAsync(regex);
+    }
+
+    protected async Task TypeAsync(ILocator locator, string text, int delayMs = 50)
+    {
+        await ClickAsync(locator);
+        if (delayMs > 0) await Page.Keyboard.TypeAsync(text, new KeyboardTypeOptions { Delay = delayMs });
+        else await locator.FillAsync(text);
+        Log.Information("Inputted text by keyboard '{Text}' into element: {Locator}", text, locator);
+    }
+
+    protected static async Task<string> GetTextAsync(ILocator locator)
     {
         try
         {
-            if (await IsElementReadyForInteraction(locator))
-            {
-                await locator.ClickAsync();
-                await locator.ClearAsync();
-                await locator.FillAsync(text);
-                await WaitForNetworkIdle();
-                Log.Information($"Filled text '{text}' into element: {locator}");
-            }
-        }
-        catch (PlaywrightException ex)
-        {
-            Log.Error($"Failed to fill text '{text}' into element with locator '{locator}': {ex.Message}");
-            throw;
-        }
-    }
+            await locator.ExpectSingleVisibleAsync();
 
-    protected async Task InputByKeyboard(ILocator locator, string text)
-    {
-        await WaitForLocatorToExistAsync(locator);
-        await Click(locator);
-        await Page.Keyboard.TypeAsync(text, new KeyboardTypeOptions { Delay = 50 });
-        await WaitForNetworkIdle();
-        Log.Information($"Inputted text by keyboard '{text}' into element: {locator}");
-    }
-
-    protected async Task GoBack()
-    {
-        try
-        {
-            await Page.GoBackAsync();
-            await WaitForNetworkIdle();
-            Log.Information("Navigated back and page is ready");
-        }
-        catch (PlaywrightException ex)
-        {
-            Log.Error($"Failed to go back: {ex.Message}");
-            throw;
-        }
-    }
-
-    protected async Task<string> GetTextByXPathAsync(ILocator xpath)
-    {
-        try
-        {
-            await IsElementReadyForInteraction(xpath);
-            var element = await xpath.ElementHandleAsync();
-
-            var text = await element.InnerTextAsync();
-            Log.Information($"Successfully retrieved text from XPath '{xpath}': '{text}'");
+            var text = (await locator.InnerTextAsync()).Trim();
+            Log.Information("Successfully retrieved text from XPath '{Locator}': '{Text}'", locator, text);
             return text;
         }
         catch (PlaywrightException ex)
         {
-            Log.Error($"An error occurred while trying to get text from '{xpath}': {ex.Message}");
+            Log.Error("An error occurred while trying to get text from '{Locator}': {ExMessage}", locator, ex.Message);
             return string.Empty;
         }
     }
 
-    protected async Task ClickEnterByKeyboard()
+    protected async Task<bool> EnsureListboxClosedAsync()
+    {
+        var listbox = Page.GetByRole(AriaRole.Listbox);
+        if (await listbox.CountAsync() == 0) return true;
+
+        await PressEscapeAsync();
+        return await WaitAbsentAsync(listbox, T.ShortMs);
+    }
+
+    protected async Task<ILocator> EnsureLocatorAsync(ILocator locator)
+    {
+        await WaitVisibleAsync(locator);
+        return locator;
+    }
+
+    public async Task<string> GetTextByXPathAsync(ILocator locator)
+    {
+        try
+        {
+            await ReadyAsync(locator);
+            var element = await locator.ElementHandleAsync();
+
+            var text = await element.InnerTextAsync();
+            Log.Information("Successfully retrieved text from XPath '{Locator}': '{Text}'", locator, text);
+            return text;
+        }
+        catch (PlaywrightException ex)
+        {
+            Log.Error("An error occurred while trying to get text from '{Locator}': {ExMessage}", locator, ex.Message);
+            return string.Empty;
+        }
+    }
+
+    public async Task PressEscapeAsync()
+    {
+        await Page.Keyboard.PressAsync("Escape");
+        Log.Information("Clicked 'Escape' button by keyword");
+    }
+
+    protected internal async Task RefreshPage()
+    {
+        await Page.ReloadAsync(new PageReloadOptions { WaitUntil = WaitUntilState.Load });
+        Log.Information("Page Refreshed");
+    }
+
+    protected async Task PressEnterAsync()
     {
         await Page.Keyboard.PressAsync("Enter");
         Log.Information("Clicked 'Enter' button by keyword");
-        await WaitForNetworkIdle();
+    }
+
+    public async Task GoBack()
+    {
+        try
+        {
+            await Page.GoBackAsync(new PageGoBackOptions { WaitUntil = WaitUntilState.NetworkIdle });
+            Log.Information("Navigated back and page is ready");
+        }
+        catch (PlaywrightException ex)
+        {
+            Log.Error("Failed to go back: {ExMessage}", ex.Message);
+            throw;
+        }
     }
 
     protected async Task<bool> ClickSaveShortcutByKeyboard(ILocator? successSelector = null)
@@ -268,7 +360,7 @@ public abstract class BasePage(IPage page)
 
             await WaitForNetworkIdle();
 
-            if (successSelector != null) await WaitForLocatorToExistAsync(successSelector);
+            if (successSelector != null) await WaitVisibleAsync(successSelector);
             Log.Information("Save shortcut action completed successfully.");
             return true;
         }
@@ -280,71 +372,6 @@ public abstract class BasePage(IPage page)
         catch (Exception ex)
         {
             Log.Error($"Unexpected error during 'Save' shortcut action: {ex.Message}");
-            return false;
-        }
-    }
-
-    protected internal async Task ClickEscapeByKeyboard()
-    {
-        await Page.Keyboard.PressAsync("Escape");
-        Log.Information("Clicked 'Escape' button by keyword");
-        await WaitForNetworkIdle();
-    }
-
-    protected internal async Task RefreshPage()
-    {
-        await Page.ReloadAsync();
-        Log.Information("Page Refreshed");
-        await WaitForNetworkIdle();
-    }
-
-    public async Task<bool> WaitForLocatorToExistAsync(ILocator locator, int timeoutMs = 15000)
-    {
-        try
-        {
-            await locator.WaitForAsync(new LocatorWaitForOptions
-            {
-                State = WaitForSelectorState.Visible,
-                Timeout = timeoutMs
-            });
-
-            Log.Information($"Locator {locator} became visible within {timeoutMs}ms.");
-            return true;
-        }
-        catch (TimeoutException ex)
-        {
-            Log.Warning($"Timeout waiting for locator to appear - {ex.Message}");
-            return false;
-        }
-        catch (PlaywrightException ex)
-        {
-            Log.Error($"Playwright error while waiting for locator: {ex.Message}");
-            return false;
-        }
-    }
-
-    protected async Task<bool> WaitUntilAbsentAsync(ILocator locator, int timeoutMs = 5_000)
-    {
-        try
-        {
-            await Task.WhenAny(
-                locator.WaitForAsync(new LocatorWaitForOptions
-                {
-                    State = WaitForSelectorState.Detached,
-                    Timeout = timeoutMs
-                }),
-                locator.WaitForAsync(new LocatorWaitForOptions
-                {
-                    State = WaitForSelectorState.Hidden,
-                    Timeout = timeoutMs
-                })
-            );
-
-            return await locator.CountAsync() == 0;
-        }
-        catch (TimeoutException)
-        {
-            Log.Error("Locator still present after timeout.");
             return false;
         }
     }

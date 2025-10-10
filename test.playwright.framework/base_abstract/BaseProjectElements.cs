@@ -1,9 +1,11 @@
 ﻿using System.Diagnostics;
 using System.Text.RegularExpressions;
+using FluentAssertions;
 using Microsoft.Playwright;
 using Serilog;
 using test.playwright.framework.constants;
 using test.playwright.framework.pages;
+using test.playwright.framework.pages.mail;
 using test.playwright.framework.utils;
 
 namespace test.playwright.framework.base_abstract;
@@ -14,9 +16,11 @@ public class BaseProjectElements(IPage page) : AssertUtils(page)
     private ILocator NextPageButton => Page.Locator("//button[@aria-label='Next page']");
     private ILocator PreviousPageButton => Page.Locator("//button[@aria-label='Previous page']");
     private ILocator FileInputSelector => Page.Locator("//div[@class='uppy-Dashboard-AddFiles']//input[1]");
+    private ILocator MailpitHeaderTitle => Page.Locator("//a[@aria-current='page']/span[text()='Mailpit']");
+    private const string MailpitUrl = "https://mailpit.com/";
     private ILocator ClickCustomButton(string buttonText) => Page.Locator($"//button[text()='{buttonText}']");
 
-    protected internal readonly Dictionary<string, string> LanguageCodes = new()
+    private readonly Dictionary<string, string> _languageCodes = new()
     {
         { "Albanian", "SQ" },
         { "Arabic", "AR" },
@@ -26,21 +30,21 @@ public class BaseProjectElements(IPage page) : AssertUtils(page)
 
     protected async Task<T> ClickSaveButton<T>() where T : BaseProjectElements
     {
-        await Click(SaveButton);
+        await ClickAsync(SaveButton);
         return (T)Activator.CreateInstance(typeof(T), Page)!;
     }
 
     private async Task<T> ClickButton<T>(ILocator buttonSelector) where T : BaseProjectElements
     {
-        await WaitForLocatorToExistAsync(buttonSelector);
-        await Click(buttonSelector);
+        await WaitVisibleAsync(buttonSelector);
+        await ClickAsync(buttonSelector);
         return (T)Activator.CreateInstance(typeof(T), Page)!;
     }
 
     private async Task<T> InputValueTo<T>(ILocator inputSelector, string text) where T : BaseProjectElements
     {
-        await WaitForLocatorToExistAsync(inputSelector);
-        await Input(inputSelector, text);
+        await WaitVisibleAsync(inputSelector);
+        await InputAsync(inputSelector, text);
         return (T)Activator.CreateInstance(typeof(T), Page)!;
     }
 
@@ -75,26 +79,33 @@ public class BaseProjectElements(IPage page) : AssertUtils(page)
     {
         var buttonText = numberOfFiles == 1 ? "Upload 1 file" : $"Upload {numberOfFiles} files";
 
-        await Click(ClickCustomButton(buttonText));
+        await ClickAsync(ClickCustomButton(buttonText));
         return (T)Activator.CreateInstance(typeof(T), Page)!;
     }
 
-    private static async Task WaitForButtonToEnableAsync(ILocator locator, int timeoutMs = 10000)
+    protected string FormatRuntime(string runtime)
     {
-        var stopwatch = Stopwatch.StartNew();
+        runtime = runtime.PadLeft(6, '0');
 
-        while (stopwatch.ElapsedMilliseconds < timeoutMs)
-        {
-            if (await locator.IsEnabledAsync())
-            {
-                Log.Information("Button is now enabled!");
-                return;
-            }
+        var hours = runtime[..2];
+        var minutes = runtime.Substring(2, 2);
+        var seconds = runtime.Substring(4, 2);
 
-            await Task.Delay(250);
-        }
+        return $"{hours}:{minutes}:{seconds}";
+    }
 
-        throw new TimeoutException("Button did not become enabled in time.");
+    public async Task<MailPage> OpenMailpitAsync()
+    {
+        // open Mailpit in a fresh tab
+        var newPage = await OpenNewTabAsync(MailpitUrl);
+
+        // build the Mailpit POM, giving it both pages
+        var mailpit = new MailPage(newPage, Page);
+
+        var isMailpitOpened = await WaitAndVerifySingleElementText("Mailpit", mailpit.MailpitHeaderTitle);
+        isMailpitOpened.Should().BeTrue("Mailpit header title should contain its name.");
+
+        return mailpit;
     }
 
     public async Task<bool> IsLocatorPresent(ILocator locator, int shortTimeoutMs = 1000)
@@ -120,29 +131,6 @@ public class BaseProjectElements(IPage page) : AssertUtils(page)
         }
     }
 
-    public async Task<bool> TryNavigatePage(PageNavigationDirection direction)
-    {
-        var buttonLocator = direction == PageNavigationDirection.Next
-            ? NextPageButton
-            : PreviousPageButton;
-
-        await WaitForLocatorToExistAsync(buttonLocator);
-        await WaitForButtonToEnableAsync(buttonLocator);
-
-        var ariaDisabled = await buttonLocator.GetAttributeAsync("aria-disabled");
-        var isDisabled = ariaDisabled?.Equals("true", StringComparison.OrdinalIgnoreCase) ?? false;
-
-        if (isDisabled)
-        {
-            Log.Warning($"{direction} Page button is disabled; cannot navigate.");
-            return false;
-        }
-
-        await Click(buttonLocator);
-        Log.Information($"{direction} page button clicked successfully.");
-        return true;
-    }
-
     protected async Task<bool> ValidateSomeDetails(string templateName, string workType, string customer,
         string? language = null)
     {
@@ -153,28 +141,12 @@ public class BaseProjectElements(IPage page) : AssertUtils(page)
             { "Customer", customer }
         };
 
-        if (!string.IsNullOrEmpty(language) && LanguageCodes.ContainsKey(language))
+        if (!string.IsNullOrEmpty(language) && _languageCodes.TryGetValue(language, out var code))
         {
-            expectedDetails.Add("Language", $"{LanguageCodes[language]} {language}");
+            expectedDetails.Add("Language", $"{code} {language}");
         }
 
         return await VerifyTableDetailsAsync(Page, expectedDetails, templateName);
-    }
-
-    protected async Task<UiActionState> GetEllipsisMenuItemStateAsync(ILocator item, string disabledClass)
-    {
-        if (!await WaitForLocatorToExistAsync(item))
-        {
-            Log.Warning("Button not found.");
-            return UiActionState.Missing;
-        }
-
-        var isDisabled = await item.EvaluateAsync<bool>(
-            $"e => e.classList.contains('{disabledClass}')");
-
-        var state = isDisabled ? UiActionState.Disabled : UiActionState.Enabled;
-        Log.Information($"Button state: {state}");
-        return state;
     }
 
     public static int ParseEntityCount(string text, string entityName)
@@ -198,5 +170,78 @@ public class BaseProjectElements(IPage page) : AssertUtils(page)
             Log.Warning($"Failed to parse {entityName} count from text: '{text}'.");
             return 0;
         }
+    }
+
+    private static async Task WaitForButtonToEnableAsync(ILocator locator, int timeoutMs = 10000)
+    {
+        var stopwatch = Stopwatch.StartNew();
+
+        while (stopwatch.ElapsedMilliseconds < timeoutMs)
+        {
+            if (await locator.IsEnabledAsync())
+            {
+                Log.Information("Button is now enabled!");
+                return;
+            }
+
+            await Task.Delay(250);
+        }
+
+        throw new TimeoutException("Button did not become enabled in time.");
+    }
+
+    public async Task<bool> TryNavigatePage(PageNavigationDirection direction)
+    {
+        var buttonLocator = direction == PageNavigationDirection.Next
+            ? NextPageButton
+            : PreviousPageButton;
+
+        await WaitVisibleAsync(buttonLocator);
+        await WaitForButtonToEnableAsync(buttonLocator);
+
+        var ariaDisabled = await buttonLocator.GetAttributeAsync("aria-disabled");
+        var isDisabled = ariaDisabled?.Equals("true", StringComparison.OrdinalIgnoreCase) ?? false;
+
+        if (isDisabled)
+        {
+            Log.Warning("{PageNavigationDirection} Page button is disabled; cannot navigate.", direction);
+            return false;
+        }
+
+        await ClickAsync(buttonLocator);
+        Log.Information("{PageNavigationDirection} page button clicked successfully.", direction);
+        return true;
+    }
+
+    protected async Task<UiActionState> GetEllipsisMenuItemStateAsync(ILocator item, string disabledClass)
+    {
+        if (!await WaitVisibleAsync(item))
+        {
+            Log.Warning("Button not found.");
+            return UiActionState.Missing;
+        }
+
+        var isDisabled = await item.EvaluateAsync<bool>(
+            $"e => e.classList.contains('{disabledClass}')");
+
+        var state = isDisabled ? UiActionState.Disabled : UiActionState.Enabled;
+        Log.Information("Button state: {UiActionState}", state);
+        return state;
+    }
+
+    private async Task<UiActionState> GetButtonStateAsync(ILocator item, string disabledClass)
+    {
+        if (!await WaitVisibleAsync(item))
+        {
+            Log.Warning("Button not found.");
+            return UiActionState.Missing;
+        }
+
+        var isDisabled = await item.EvaluateAsync<bool>(
+            $"e => e.classList.contains('{disabledClass}')");
+
+        var state = isDisabled ? UiActionState.Disabled : UiActionState.Enabled;
+        Log.Information("Button state: {UiActionState}", state);
+        return state;
     }
 }
