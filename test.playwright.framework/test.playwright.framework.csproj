@@ -50,6 +50,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <Folder Include="fixtures\" />
       <Folder Include="tests\" />
     </ItemGroup>
 

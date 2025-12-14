@@ -1,4 +1,4 @@
-﻿namespace test.playwright.framework.pages;
+﻿namespace test.playwright.framework.pages.enums;
 
 public enum PageNavigationDirection
 {

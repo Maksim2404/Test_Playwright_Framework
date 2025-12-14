@@ -1,4 +1,4 @@
-﻿namespace test.playwright.framework.coding.miniOOP;
+﻿namespace test.playwright.framework.coding.miniOop;
 
 public class Car
 {

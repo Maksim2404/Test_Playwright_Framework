@@ -8,8 +8,8 @@ using NUnit.Framework;
 using NUnit.Framework.Interfaces;
 using Serilog;
 using Serilog.Events;
-using test.playwright.framework.auth;
-using test.playwright.framework.config;
+using test.playwright.framework.fixtures.auth;
+using test.playwright.framework.fixtures.config;
 using test.playwright.framework.pages.enums;
 using test.playwright.framework.security.sql;
 using test.playwright.framework.security.xss;
@@ -44,11 +44,10 @@ public abstract class BaseTest
     protected static int PassedTests;
     protected static int FailedTests;
 
-    /* config + reporting */
     protected readonly AtfConfig Config;
     protected readonly AllureLifecycle Allure;
     private readonly XssTestReport _xssReport = new();
-    private readonly SqlInjectionTestReport _sqlReport = new();
+    private readonly SqlTestReport _sqlReport = new();
     private const string DefaultDialogAction = "Accept";
 
     protected BaseTest()
@@ -247,7 +246,7 @@ public abstract class BaseTest
 
     /* ---------- aggregate‑report helpers ---------- */
     protected void UpdateGlobalXssReport(XssTestReport r) => Aggregate(_xssReport, r);
-    protected void UpdateSqlInjectionReport(SqlInjectionTestReport r) => Aggregate(_sqlReport, r);
+    protected void UpdateSqlInjectionReport(SqlTestReport r) => Aggregate(_sqlReport, r);
 
     private static void Aggregate(dynamic agg, dynamic delta)
     {

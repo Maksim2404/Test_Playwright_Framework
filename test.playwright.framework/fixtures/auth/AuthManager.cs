@@ -1,10 +1,10 @@
 ﻿using System.Diagnostics;
 using Microsoft.Playwright;
 using Serilog;
-using test.playwright.framework.config;
-using test.playwright.framework.constants;
+using test.playwright.framework.fixtures.config;
+using test.playwright.framework.fixtures.constants;
 
-namespace test.playwright.framework.auth;
+namespace test.playwright.framework.fixtures.auth;
 
 public sealed class AuthManager(Contracts.IProfileProvider provider, AtfConfig cfg)
 {
@@ -26,22 +26,20 @@ public sealed class AuthManager(Contracts.IProfileProvider provider, AtfConfig c
             {
                 if (await locator.IsEnabledAsync())
                 {
-                    Log.Information($"Element '{locator}' is visible and enabled. Ready for interaction.");
+                    Log.Information("Element '{Locator}' is visible and enabled. Ready for interaction.", locator);
                     return;
                 }
 
                 await Task.Delay(250);
             }
 
-            Log.Information($"Element '{locator}' is visible but stayed disabled up to {timeoutMs}ms.");
-        }
-        catch (TimeoutException ex)
-        {
-            Log.Error($"Element '{locator}' not visible within {timeoutMs}ms: {ex.Message}");
+            Log.Information("Element '{Locator}' is visible but stayed disabled up to {TimeoutMs}ms.", locator,
+                timeoutMs);
         }
         catch (PlaywrightException ex)
         {
-            Log.Error($"Failed to verify if element '{locator}' is ready for interaction: {ex.Message}");
+            Log.Error("Failed to verify if element '{Locator}' is ready for interaction: {ExMessage}", locator,
+                ex.Message);
         }
     }
 
@@ -69,13 +67,13 @@ public sealed class AuthManager(Contracts.IProfileProvider provider, AtfConfig c
 
     public async Task LoginAsync(IPage page, Contracts.LoginRequest req)
     {
-        Log.Debug($"Login with {req.Profile.Name} – password-only flow");
+        Log.Debug("Login with {ProfileName} – password-only flow", req.Profile.Name);
         await OpenBaseUrl(page);
         await FillAndSubmitLoginForm(page, req.Profile);
 
         if (req.Mode is Contracts.LoginMode.Totp)
         {
-            Log.Debug($"Login with {req.Profile.Name} – TOTP flow");
+            Log.Debug("Login with {ProfileName} – TOTP flow", req.Profile.Name);
             var otpInputField = page.Locator(TotpInputFieldSelector);
             await otpInputField.WaitForAsync();
             await TotpLogin.PerformAsync(page, req.Profile.TotpSecret!, otpInputField);
@@ -88,9 +86,8 @@ public sealed class AuthManager(Contracts.IProfileProvider provider, AtfConfig c
         await IsElementInteractable(locator);
         await locator.ClickAsync();
 
-        await LoginAsync(page, new Contracts.LoginRequest(profile,
-            string.IsNullOrWhiteSpace(profile.TotpSecret)
-                ? Contracts.LoginMode.PasswordOnly
-                : Contracts.LoginMode.Totp));
+        await LoginAsync(page, new Contracts.LoginRequest(profile, string.IsNullOrWhiteSpace(profile.TotpSecret)
+            ? Contracts.LoginMode.PasswordOnly
+            : Contracts.LoginMode.Totp));
     }
 }

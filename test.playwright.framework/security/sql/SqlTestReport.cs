@@ -1,6 +1,6 @@
 ﻿namespace test.playwright.framework.security.sql;
 
-public class SqlInjectionTestReport
+public class SqlTestReport
 {
     public int TotalPayloadsTested { get; set; }
     public int TotalFieldsTested { get; set; }

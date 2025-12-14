@@ -2,8 +2,8 @@
 using Microsoft.Playwright;
 using NUnit.Framework;
 using Serilog;
-using test.playwright.framework.auth;
-using test.playwright.framework.config;
+using test.playwright.framework.fixtures.auth;
+using test.playwright.framework.fixtures.config;
 using test.playwright.framework.pages.enums;
 
 namespace test.playwright.framework.utils;

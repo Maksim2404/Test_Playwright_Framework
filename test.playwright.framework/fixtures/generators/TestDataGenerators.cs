@@ -1,12 +1,13 @@
 ﻿using Bogus;
 using test.playwright.framework.pages.enums;
 
-namespace test.playwright.framework.generators;
+namespace test.playwright.framework.fixtures.generators;
 
 public static class TestDataGenerators
 {
     private static readonly Faker Faker = new();
     private static readonly Random Random = new();
+    private static readonly Random Rng = new(Guid.NewGuid().GetHashCode());
 
     private static bool DefaultIsSentinel<T>() where T : struct, Enum
     {
@@ -34,6 +35,37 @@ public static class TestDataGenerators
 
         return Faker.Random.ListItems(pool, count).ToList();
     }
+    
+    private static T PickRandom<T>(IReadOnlyList<T> list)
+    {
+        if (list.Count == 0) throw new InvalidOperationException("No candidates available to choose from.");
+        return list[Rng.Next(list.Count)];
+    }
+
+    private static List<T> PickDistinctRandom<T>(IReadOnlyList<T> list, int count)
+    {
+        switch (count)
+        {
+            case < 0:
+                throw new ArgumentOutOfRangeException(nameof(count));
+            case 0:
+                return [];
+        }
+
+        if (count > list.Count)
+            throw new InvalidOperationException($"Requested {count} items but only {list.Count} candidates.");
+
+        var idx = Enumerable.Range(0, list.Count).ToArray();
+        for (var i = 0; i < count; i++)
+        {
+            var j = Rng.Next(i, idx.Length);
+            (idx[i], idx[j]) = (idx[j], idx[i]);
+        }
+
+        var result = new List<T>(count);
+        for (var i = 0; i < count; i++) result.Add(list[idx[i]]);
+        return result;
+    }
 
     public static string RandomText(int length)
     {
@@ -57,13 +89,10 @@ public static class TestDataGenerators
         return Faker.Date.Future().Year.ToString();
     }
 
-    public static string RandomEmail()
+    public static string GenerateRandomEmail(string domain = "example.com")
     {
-        const string domain = "example.com";
-        var userName = Faker.Random.String2(8, "ABCDEFGHIJKLMNOPQRSTUVWXYZ").ToLower();
-
-        var email = $"{userName}@{domain}";
-        return email;
+        var guid = Guid.NewGuid().ToString().AsSpan(0, 6);
+        return $"u{guid:N}@{domain}";
     }
 
     public static string RandomPartsNumber(int digits = 1, bool testMode = true)
@@ -84,16 +113,16 @@ public static class TestDataGenerators
         };
     }
 
-    public static string GenerateRandomWorkType(string? excludeWorkType = null)
+    public static string GenerateRandomType(string? excludeType = null)
     {
-        var workType = new List<string> { "Type1", "Type2", "Type3", "Type4", "Type5", "Type6" };
+        var type = new List<string> { "Type1", "Type2", "Type3", "Type4", "Type5", "Type6" };
 
-        if (!string.IsNullOrEmpty(excludeWorkType))
+        if (!string.IsNullOrEmpty(excludeType))
         {
-            workType.Remove(excludeWorkType);
+            type.Remove(excludeType);
         }
 
-        return workType[Faker.Random.Int(0, workType.Count - 1)];
+        return type[Faker.Random.Int(0, type.Count - 1)];
     }
 
     public static string GenerateRandomTime()
@@ -119,4 +148,9 @@ public static class TestDataGenerators
 
     public static List<TaskTypeKind> RandomTaskTypeKinds(int count, IEnumerable<TaskTypeKind>? exclude = null)
         => RandomEnumMany(count, exclude);
+    
+    public static int GenerateStarRating(int min = 1, int max = 5)
+    {
+        return Random.Shared.Next(min, max + 1);
+    }
 }

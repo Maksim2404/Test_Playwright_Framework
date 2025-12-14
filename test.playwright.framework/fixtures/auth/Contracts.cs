@@ -1,6 +1,6 @@
-﻿using test.playwright.framework.config;
+﻿using test.playwright.framework.fixtures.config;
 
-namespace test.playwright.framework.auth;
+namespace test.playwright.framework.fixtures.auth;
 
 public class Contracts
 {

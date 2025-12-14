@@ -3,8 +3,8 @@ using System.Text.RegularExpressions;
 using FluentAssertions;
 using Microsoft.Playwright;
 using Serilog;
-using test.playwright.framework.constants;
-using test.playwright.framework.pages;
+using test.playwright.framework.fixtures.constants;
+using test.playwright.framework.pages.enums;
 using test.playwright.framework.pages.mail;
 using test.playwright.framework.utils;
 
@@ -228,20 +228,29 @@ public class BaseProjectElements(IPage page) : AssertUtils(page)
         Log.Information("Button state: {UiActionState}", state);
         return state;
     }
-
-    private async Task<UiActionState> GetButtonStateAsync(ILocator item, string disabledClass)
+    
+    protected async Task<UiActionState> GetElementStateAsync(ILocator item, string elementClass)
     {
         if (!await WaitVisibleAsync(item))
         {
-            Log.Warning("Button not found.");
+            Log.Warning("Element not found.");
             return UiActionState.Missing;
         }
 
-        var isDisabled = await item.EvaluateAsync<bool>(
-            $"e => e.classList.contains('{disabledClass}')");
+        var isDisabled = await item.EvaluateAsync<bool>($"e => e.classList.contains('{elementClass}')");
 
         var state = isDisabled ? UiActionState.Disabled : UiActionState.Enabled;
-        Log.Information("Button state: {UiActionState}", state);
+        Log.Information("Element state: {UiActionState}", state);
         return state;
+    }
+
+    public static async Task<ILocator> ResolveEditableAsync(ILocator container)
+    {
+        var tag = (await container.EvaluateAsync<string>("el => el.tagName.toLowerCase()")).Trim();
+        if (tag is "input" or "textarea") return container;
+
+        var editable = container.Locator("input, textarea, [contenteditable='true']").First;
+        await editable.ExpectSingleVisibleAsync();
+        return editable;
     }
 }

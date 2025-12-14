@@ -1,0 +1,25 @@
+﻿# Build outputs
+bin/
+obj/
+
+# Allure
+allure-results/
+allure-reports/
+
+# Rider / IntelliJ
+.idea/
+*.iml
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Temporary files
+*.log
+*.tmp
+*.cache
+
+# OS junk
+.DS_Store
+Thumbs.db

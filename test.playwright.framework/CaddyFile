@@ -1,0 +1,4 @@
+﻿https://localhost:8081 {
+    root * ./allure-reports
+    file_server
+}

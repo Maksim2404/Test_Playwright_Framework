@@ -1,7 +1,7 @@
 ﻿using FluentAssertions;
 using NUnit.Framework;
 
-namespace test.playwright.framework.config;
+namespace test.playwright.framework.fixtures.config;
 
 public class AtfConfigTest
 {

@@ -80,7 +80,7 @@ public abstract class BasePage(IPage page, UiTimeouts? timeouts = null)
         }
     }
     
-    public async Task<bool> WaitVisibleAsync(ILocator locator, int timeoutMs = 15000)
+    protected async Task<bool> WaitVisibleAsync(ILocator locator, int timeoutMs = 15000)
     {
         timeoutMs = timeoutMs <= 0 ? T.DefaultMs : timeoutMs;
         try
@@ -134,6 +134,31 @@ public abstract class BasePage(IPage page, UiTimeouts? timeouts = null)
         }
     }
     
+    protected async Task WaitTableSettledAsync(ILocator tableRoot, int timeoutMs = 1000)
+    {
+        await tableRoot.First.ExpectSingleVisibleAsync();
+
+        var skeletons = tableRoot.Locator(
+            ":scope .v-skeleton-loader, :scope .v-skeleton-loader__bone, :scope [data-skeleton='true']");
+        try
+        {
+            await WaitAbsentAsync(skeletons, timeoutMs);
+        }
+        catch
+        {
+            // if no skeletons existed
+        }
+
+        await tableRoot.Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        var rows = tableRoot.Locator("tbody tr:visible:not(.v-data-table__empty)");
+
+        await Task.WhenAny(rows.First.WaitForAsync(new LocatorWaitForOptions
+                { State = WaitForSelectorState.Visible, Timeout = timeoutMs }),
+            tableRoot.Locator("tbody .v-data-table__empty:visible").WaitForAsync(new LocatorWaitForOptions
+                { State = WaitForSelectorState.Visible, Timeout = timeoutMs })
+        );
+    }
+    
     public Task<string> GetTitleAsync()
     {
         var title = Page.TitleAsync();
@@ -176,6 +201,31 @@ public abstract class BasePage(IPage page, UiTimeouts? timeouts = null)
     {
         await Page.EvaluateAsync(@"(selector) => {const element = document.querySelector(selector);
         if (element) element.click(); else throw new Error('Element not found');}", selector);
+    }
+    
+    protected async Task ClickAndSelectAsync(ILocator root, string value)
+    {
+        await root.FocusAsync();
+        await ClickAsync(root);
+
+        var listbox = Page.Locator(".v-overlay-container [role='listbox'], [role='listbox']").First;
+        try
+        {
+            await listbox.IsVisibleWithinAsync(1500);
+        }
+        catch (PlaywrightException ex)
+        {
+            throw new Exception(ex.Message);
+        }
+
+        var options = listbox.Locator("[role='option'], .v-list-item-title, .v-list-item");
+        await Page.WaitForTimeoutAsync(100);
+
+        var opt = options.Filter(new LocatorFilterOptions { HasText = value }).First;
+        await ClickAsync(opt);
+
+        var shown = await root.Locator(".v-select__selection-text,.v-chip__content,input").First.InnerTextAsync();
+        if (shown.Contains(value, StringComparison.OrdinalIgnoreCase)) return;
     }
 
     public int GetListSize(List<IElementHandle> list)
@@ -229,21 +279,19 @@ public abstract class BasePage(IPage page, UiTimeouts? timeouts = null)
 
     protected async Task InputAsync(ILocator locator, string text)
     {
-        await locator.ClickAsync();
+        await ClickAsync(locator);
         await locator.ClearAsync();
         await locator.FillAsync(text);
         var tag = await locator.EvaluateAsync<string>("e => e.tagName.toLowerCase()");
         if (tag is "input" or "textarea")
         {
             var actual = await locator.InputValueAsync();
-            if (DigitsOnly(actual) != DigitsOnly(text))
-                await Assertions.Expect(locator).ToHaveValueAsync(text);
+            if (DigitsOnly(actual) != DigitsOnly(text)) await Assertions.Expect(locator).ToHaveValueAsync(text);
         }
         else
         {
             var actual = await locator.InnerTextAsync();
-            if (DigitsOnly(actual) != DigitsOnly(text))
-                await Assertions.Expect(locator).ToHaveTextAsync(text);
+            if (DigitsOnly(actual) != DigitsOnly(text)) await Assertions.Expect(locator).ToHaveTextAsync(text);
         }
 
         Log.Information("Filled text '{Text}' into element: {Locator}", text, locator);
@@ -274,7 +322,6 @@ public abstract class BasePage(IPage page, UiTimeouts? timeouts = null)
         try
         {
             await locator.ExpectSingleVisibleAsync();
-
             var text = (await locator.InnerTextAsync()).Trim();
             Log.Information("Successfully retrieved text from XPath '{Locator}': '{Text}'", locator, text);
             return text;
@@ -318,7 +365,7 @@ public abstract class BasePage(IPage page, UiTimeouts? timeouts = null)
             return string.Empty;
         }
     }
-
+    
     public async Task PressEscapeAsync()
     {
         await Page.Keyboard.PressAsync("Escape");

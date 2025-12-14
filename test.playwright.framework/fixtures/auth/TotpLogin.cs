@@ -3,7 +3,7 @@ using Microsoft.Playwright;
 using OtpNet;
 using Serilog;
 
-namespace test.playwright.framework.auth;
+namespace test.playwright.framework.fixtures.auth;
 
 public static class TotpLogin
 {

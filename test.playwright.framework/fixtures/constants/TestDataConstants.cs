@@ -1,4 +1,4 @@
-﻿namespace test.playwright.framework.constants;
+﻿namespace test.playwright.framework.fixtures.constants;
 
 public static class TestDataConstants
 {

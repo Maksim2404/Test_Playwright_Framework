@@ -64,10 +64,10 @@ public class SqlInjectionTestHelper
                content.Contains("unrecognized token");
     }
 
-    public static async Task<SqlInjectionTestReport> ValidateSqlInjectionAsync(IPage page, string inputSelector,
+    public static async Task<SqlTestReport> ValidateSqlInjectionAsync(IPage page, string inputSelector,
         string searchButtonSelector)
     {
-        var sqlInjectionReport = new SqlInjectionTestReport();
+        var sqlInjectionReport = new SqlTestReport();
         var sqlPayloads = SqlInjectionPayloads.BasicPayloads.Concat(SqlInjectionPayloads.AdvancedPayloads).ToList();
 
         foreach (var payload in sqlPayloads)

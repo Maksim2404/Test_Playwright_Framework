@@ -1,9 +1,9 @@
 ﻿using Microsoft.Extensions.Configuration;
 using NUnit.Framework;
-using test.playwright.framework.auth;
 using test.playwright.framework.base_abstract;
+using test.playwright.framework.fixtures.auth;
 
-namespace test.playwright.framework.config;
+namespace test.playwright.framework.fixtures.config;
 
 public sealed class AtfConfig : Contracts.IProfileProvider
 {
