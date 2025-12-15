@@ -9,12 +9,14 @@
 //  </auto-generated>
 // ------------------------------------------------------------------------------
 #region Designer generated code
-
-using TechTalk.SpecFlow;
-
 #pragma warning disable
-namespace test.playwright.framework.specflow.features
+namespace test.playwright.framework.Specflow.Features
 {
+    using TechTalk.SpecFlow;
+    using System;
+    using System.Linq;
+    
+    
     [System.CodeDom.Compiler.GeneratedCodeAttribute("TechTalk.SpecFlow", "3.9.0.0")]
     [System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     [NUnit.Framework.TestFixtureAttribute()]
