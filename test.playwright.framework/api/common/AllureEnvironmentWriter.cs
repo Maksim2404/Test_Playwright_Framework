@@ -15,4 +15,11 @@ public static class AllureEnvironmentWriter
 
         File.WriteAllText(path, sb.ToString());
     }
+
+    public static string Safe(string name)
+    {
+        name = Path.GetInvalidFileNameChars().Aggregate(name, (current, c) => current.Replace(c, '_'));
+        name = name.Replace("/", "_").Replace("\\", "_").Replace(":", "_");
+        return name;
+    }
 }

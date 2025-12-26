@@ -6,6 +6,7 @@ public sealed class EntityRecord
 {
     [JsonPropertyName("entityId")] public int EntityId { get; init; }
     [JsonPropertyName("entityName")] public string EntityName { get; init; } = null!;
+    [JsonPropertyName("emailAddress")] public string Email { get; init; } = null!;
     [JsonPropertyName("activeFlag")] public bool ActiveFlag { get; init; }
     [JsonPropertyName("deleteFlag")] public bool DeleteFlag { get; init; }
 }

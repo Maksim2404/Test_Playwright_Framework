@@ -1,6 +1,5 @@
 ﻿using System.Net.Http.Json;
 using Allure.Net.Commons;
-using Serilog;
 using test.playwright.framework.api.auth;
 using test.playwright.framework.api.config;
 using test.playwright.framework.api.dto.entity_1;
@@ -11,6 +10,27 @@ public sealed class EntityApiClient(HttpClient http, TokenProvider tokenProvider
     : BaseApiClient(http, tokenProvider, apiCfg)
 {
     private const string BasePath = "/api/v1/entity";
+
+    public async Task<EntityDetailsDto> GetByIdAsync(int id)
+    {
+        return await AllureApi.Step($"Entity | Get by id {id}", async () =>
+        {
+            var request = await CreateAuthorizedJsonRequestAsync(HttpMethod.Get, $"{BasePath}/{id}");
+            var response = await Http.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                await AllureAttachRequestAsync(request, "Entity Get by id");
+                await AllureAttachResponseAsync(response, "Entity Get by id");
+                var raw = await response.Content.ReadAsStringAsync();
+                throw new HttpRequestException(
+                    $"Get Entity by id failed: {(int)response.StatusCode} {response.StatusCode}. Body: {raw}");
+            }
+
+            return await response.Content.ReadFromJsonAsync<EntityDetailsDto>()
+                   ?? throw new InvalidOperationException("Failed to deserialize EntityDetailsDto");
+        });
+    }
 
     public async Task<EntitySearchResponse> SearchAsync(string? searchTerm, bool? showDeleted, bool showInactive,
         int pageSize = 20, int pageIndex = 0)
@@ -27,21 +47,24 @@ public sealed class EntityApiClient(HttpClient http, TokenProvider tokenProvider
                         pageIndex
                     },
                     sort = (string?)null,
-                    searchTerm = searchTerm,
-                    showDeleted = showDeleted,
-                    showInactive = showInactive
+                    searchTerm,
+                    showDeleted,
+                    showInactive
                 };
 
                 var request =
                     await CreateAuthorizedJsonRequestAsync(HttpMethod.Post, $"{BasePath}/entity-search", body);
 
                 var response = await Http.SendAsync(request);
-                response.EnsureSuccessStatusCode();
+                var raw = await response.Content.ReadAsStringAsync();
 
-                var dto = await response.Content.ReadFromJsonAsync<EntitySearchResponse>()
-                          ?? throw new InvalidOperationException("Failed to deserialize EntitySearchResponse");
-
-                return dto;
+                if (response.IsSuccessStatusCode)
+                    return await response.Content.ReadFromJsonAsync<EntitySearchResponse>()
+                           ?? throw new InvalidOperationException("Failed to deserialize EntitySearchResponse");
+                await AllureAttachRequestAsync(request, "Entity Search");
+                await AllureAttachResponseAsync(response, "Entity Search");
+                throw new HttpRequestException(
+                    $"Search Entity failed: {(int)response.StatusCode} {response.StatusCode}. Body: {raw}.");
             });
     }
 
@@ -52,7 +75,15 @@ public sealed class EntityApiClient(HttpClient http, TokenProvider tokenProvider
             var body = new { entityName = name, activeFlag = true };
             var request = await CreateAuthorizedJsonRequestAsync(HttpMethod.Post, BasePath, body);
             var response = await Http.SendAsync(request);
-            response.EnsureSuccessStatusCode();
+            var raw = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                await AllureAttachRequestAsync(request, "Entity Create");
+                await AllureAttachResponseAsync(response, "Entity Create");
+                throw new HttpRequestException(
+                    $"Create Entity failed: {(int)response.StatusCode} {response.StatusCode}. Body: {raw}");
+            }
 
             EntityRecord? created = null;
             try
@@ -66,61 +97,69 @@ public sealed class EntityApiClient(HttpClient http, TokenProvider tokenProvider
 
             if (created is not null) return created;
 
-            var search = await SearchAsync(name, showDeleted: null, showInactive: false, pageSize: 50);
-            var match = search.Records.FirstOrDefault(l =>
-                string.Equals(l.EntityName, name, StringComparison.OrdinalIgnoreCase));
+            var search = await SearchAsync(name, false, false, pageSize: 50, pageIndex: 0);
+            var match = search.Records.FirstOrDefault(r =>
+                string.Equals(r.EntityName, name, StringComparison.OrdinalIgnoreCase));
 
-            if (match is null) throw new InvalidOperationException("Entity was created but not found via search.");
+            if (match is null)
+                throw new InvalidOperationException($"Entity '{name}' was created but not found via search.");
 
             return match;
         });
     }
 
-    public async Task<EntityRecord> UpdateAsync(int entityId, string name, bool activeFlag)
+    public async Task<EntityRecord> UpdateAsync(int entityId, object updateBody, string nameForFallback)
     {
-        return await AllureApi.Step($"Entity: Update entity ID={entityId} to '{name}', active={activeFlag}",
-            async () =>
+        return await AllureApi.Step($"Entity: Update entity ID={entityId}", async () =>
+        {
+            var request = await CreateAuthorizedJsonRequestAsync(HttpMethod.Put, $"{BasePath}/{entityId}", updateBody);
+
+            var response = await Http.SendAsync(request);
+            var raw = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
             {
-                var body = new { entityName = name, activeFlag = activeFlag };
-                var request = await CreateAuthorizedJsonRequestAsync(HttpMethod.Put, $"{BasePath}/{entityId}", body);
+                await AllureAttachRequestAsync(request, "Update Entity");
+                await AllureAttachResponseAsync(response, "Update Entity");
+                throw new HttpRequestException(
+                    $"Update failed: {(int)response.StatusCode} {response.StatusCode}. Body: {raw}");
+            }
 
-                var response = await Http.SendAsync(request);
-                var rawBody = await response.Content.ReadAsStringAsync();
-                if (!response.IsSuccessStatusCode)
-                {
-                    await AllureAttachRequestAsync(request, "Update Entity");
-                    await AllureAttachResponseAsync(response, "Update Entity");
-                    await AttachOnFailureAsync(response, "Update Entity");
-                    Log.Warning("Update failed. Status: {StatusCode} {Status}. Body: {Body}",
-                        (int)response.StatusCode, response.StatusCode,
-                        string.IsNullOrWhiteSpace(rawBody) ? "<empty>" : rawBody);
+            EntityRecord? updated = null;
+            try
+            {
+                updated = await response.Content.ReadFromJsonAsync<EntityRecord>();
+            }
+            catch
+            {
+                // fallback to search
+            }
 
-                    throw new HttpRequestException(
-                        $"Entity update failed with {(int)response.StatusCode} {response.StatusCode}. Body: {rawBody}");
-                }
+            if (updated is not null) return updated;
 
-                EntityRecord? updated = null;
-                try
-                {
-                    updated = await response.Content.ReadFromJsonAsync<EntityRecord>();
-                }
-                catch
-                {
-                    // fallback to search
-                }
+            var search = await SearchAsync(searchTerm: nameForFallback, showDeleted: null, showInactive: false,
+                pageSize: 50);
+            var match = search.Records.FirstOrDefault(c => c.EntityId == entityId &&
+                                                           string.Equals(c.EntityName, nameForFallback,
+                                                               StringComparison.OrdinalIgnoreCase));
 
-                if (updated is not null) return updated;
+            if (match is null)
+                throw new InvalidOperationException("Entity was updated but not found via search.");
 
-                var search = await SearchAsync(searchTerm: name, showDeleted: null, showInactive: false, pageSize: 50);
-                var match = search.Records.FirstOrDefault(c => c.EntityId == entityId &&
-                                                               string.Equals(c.EntityName, name,
-                                                                   StringComparison.OrdinalIgnoreCase));
+            return match;
+        });
+    }
 
-                if (match is null)
-                    throw new InvalidOperationException("Entity was updated but not found via search.");
+    public Task<EntityRecord> UpdateAsync(int id, string name, string currentEmail)
+    {
+        var body = new
+        {
+            appUserId = 0,
+            name,
+            emailAddress = currentEmail,
+            deleteFlag = false
+        };
 
-                return match;
-            });
+        return UpdateAsync(id, body, currentEmail);
     }
 
     public async Task<EntityRecord?> FindByNameAsync(string name, bool includeInactive = false,
@@ -156,27 +195,39 @@ public sealed class EntityApiClient(HttpClient http, TokenProvider tokenProvider
             });
     }
 
-    public async Task DeleteAsync(int languageId)
+    public async Task DeleteAsync(int id)
     {
-        await AllureApi.Step($"Entity: Soft-delete entity ID={languageId}", async () =>
+        await AllureApi.Step($"Entity: Soft-delete entity ID={id}", async () =>
         {
-            var request = await CreateAuthorizedJsonRequestAsync(HttpMethod.Delete, $"{BasePath}/{languageId}");
+            var request = await CreateAuthorizedJsonRequestAsync(HttpMethod.Delete, $"{BasePath}/{id}");
 
             var response = await Http.SendAsync(request);
-            response.EnsureSuccessStatusCode();
+            var raw = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                await AllureAttachRequestAsync(request, "Entity Delete");
+                await AllureAttachResponseAsync(response, "Entity Delete");
+                throw new HttpRequestException($"Delete failed... Body: {raw}");
+            }
         });
     }
 
-    public async Task UndeleteAsync(int languageId)
+    public async Task UndeleteAsync(int id)
     {
-        await AllureApi.Step($"Entity: Undelete entity ID={languageId}", async () =>
+        await AllureApi.Step($"Entity: Undelete entity ID={id}", async () =>
         {
             var body = new { undelete = true };
-            var request = await CreateAuthorizedJsonRequestAsync(HttpMethod.Delete,
-                $"{BasePath}/{languageId}?undelete=true", body);
+            var request =
+                await CreateAuthorizedJsonRequestAsync(HttpMethod.Delete, $"{BasePath}/{id}?undelete=true", body);
 
             var response = await Http.SendAsync(request);
-            response.EnsureSuccessStatusCode();
+            var raw = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                await AllureAttachRequestAsync(request, "Entity Undelete");
+                await AllureAttachResponseAsync(response, "Entity Undelete");
+                throw new HttpRequestException($"Undelete failed... Body: {raw}");
+            }
         });
     }
 }

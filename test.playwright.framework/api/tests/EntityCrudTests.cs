@@ -67,9 +67,10 @@ public sealed class EntityCrudTests : ApiTestBase
 
         var originalId = created.EntityId;
         var originalName = created.EntityName;
+        var originalEmail = created.Email;
 
         var newName = originalName + "_UPDATED";
-        var updated = await _entities.UpdateAsync(entityId: originalId, name: newName, activeFlag: true);
+        var updated = await _entities.UpdateAsync(originalId, newName, originalEmail);
 
         updated.EntityId.Should().Be(originalId, "update should not change the entity's ID.");
         updated.ShouldMatchName(newName);

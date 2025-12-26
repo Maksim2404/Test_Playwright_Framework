@@ -5,7 +5,6 @@ using Allure.NUnit;
 using Allure.NUnit.Attributes;
 using FluentAssertions;
 using NUnit.Framework;
-using Serilog;
 using test.playwright.framework.api.apiClient;
 using test.playwright.framework.api.@base;
 using test.playwright.framework.api.common;
@@ -25,6 +24,7 @@ public sealed class EntityNegativeTests : ApiTestBase
 {
     private EntityApiClient _entities = null!;
     private EntityTestHelper _helper = null!;
+    
 
     [SetUp]
     public void SetUp()
@@ -37,15 +37,6 @@ public sealed class EntityNegativeTests : ApiTestBase
     public async Task TearDown()
     {
         await _helper.DisposeAsync();
-    }
-
-    private async Task<HttpResponseMessage> SendAuthorizedAsync(HttpRequestMessage request)
-    {
-        var token = await TokenProvider.GetAccessTokenAsync();
-        token.Should().NotBeNullOrWhiteSpace("Admin token must be available for negative tests.");
-
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return await Http.SendAsync(request);
     }
 
     private Task<EntityRecord> CreateTestEntityAsync(string? suffix = null) => _helper.CreateTempEntityAsync(suffix);
@@ -71,12 +62,9 @@ public sealed class EntityNegativeTests : ApiTestBase
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/entity") { Content = JsonContent.Create(body) };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        var response = await Http.SendAsync(request);
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
-            $"Expected 400 BadRequest when missing entity name, but got {(int)response.StatusCode} {response.StatusCode}.");
-
-        var errorBody = await response.Content.ReadAsStringAsync();
-        Log.Information("Validation response: {Body}", errorBody);
+        var response = await _entities.SendAdminAuthorizedAsync(request);
+        var error = await response.ShouldBeApiErrorAsync(HttpStatusCode.BadRequest);
+        error.ShouldHaveValidationErrorFor("Name", "The Name field is required.");
     }
 
     [Test]
@@ -90,7 +78,7 @@ public sealed class EntityNegativeTests : ApiTestBase
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/entity")
             { Content = JsonContent.Create(duplicateBody) };
 
-        var response = await SendAuthorizedAsync(request);
+        var response = await _entities.SendAdminAuthorizedAsync(request);
         var error = await response.ShouldBeApiErrorAsync(HttpStatusCode.BadRequest);
         error.ShouldHaveCustomMessageContaining("already exists");
     }
@@ -103,7 +91,7 @@ public sealed class EntityNegativeTests : ApiTestBase
         var body = new { entityName = tooLongName, activeFlag = true };
         var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/entity") { Content = JsonContent.Create(body) };
 
-        var response = await SendAuthorizedAsync(request);
+        var response = await _entities.SendAdminAuthorizedAsync(request);
         var error = await response.ShouldBeApiErrorAsync(HttpStatusCode.BadRequest);
         error.ShouldHaveValidationErrorFor(fieldName: "EntityName", expectedMessageFragment: "maximum length");
     }
