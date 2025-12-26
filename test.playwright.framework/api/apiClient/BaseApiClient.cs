@@ -2,6 +2,8 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Allure.Net.Commons;
 using FluentAssertions;
@@ -38,16 +40,21 @@ public abstract class BaseApiClient(HttpClient http, TokenProvider tokenProvider
             default: throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unsupported ApiUserKind");
         }
     }
+    
+    protected static readonly JsonSerializerOptions IgnoreNulls = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
     public async Task<HttpRequestMessage> CreateAuthorizedJsonRequestAsync(HttpMethod method, string relativePath,
-        object? body = null, ApiUserKind userKind = ApiUserKind.Admin)
+        object? body = null, ApiUserKind userKind = ApiUserKind.Admin, JsonSerializerOptions? jsonOptions = null)
     {
         var token = await GetTokenForUserKindAsync(userKind);
 
         var request = new HttpRequestMessage(method, relativePath);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        if (body is not null) request.Content = JsonContent.Create(body);
+        if (body is not null) request.Content = JsonContent.Create(body, options: jsonOptions);
 
         return request;
     }
